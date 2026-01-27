@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{tool_name}} | Fast Track</title>
+  <style>
+    :root {
+      --ft-black: #000000;
+      --ft-white: #FFFFFF;
+      --ft-grey: #B2B2B2;
+      --ft-grey-dark: #1A1A1A;
+      --ft-yellow: #FFF469;
+      --ft-red: #FF6B6B;
+      --ft-green: #4ECDC4;
+      --ft-orange: #F39C12;
+      --ft-accent: var(--ft-orange);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--ft-black);
+      color: var(--ft-white);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .tool-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .tool-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .category-badge {
+      display: inline-block;
+      background: var(--ft-orange);
+      color: var(--ft-black);
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    /* Budget Reality Check - B2C specific */
+    .budget-check {
+      background: var(--ft-grey-dark);
+      border: 2px solid var(--ft-orange);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .budget-check h3 {
+      color: var(--ft-orange);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .budget-visual {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .budget-bar {
+      flex: 1;
+      height: 32px;
+      background: var(--ft-grey-dark);
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .budget-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--ft-green), var(--ft-yellow), var(--ft-red));
+      transition: width 0.3s;
+    }
+
+    .budget-marker {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 4px;
+      background: var(--ft-white);
+    }
+
+    .budget-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--ft-grey);
+    }
+
+    /* Needs vs Wants */
+    .needs-wants {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .needs-column, .wants-column {
+      background: var(--ft-grey-dark);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .needs-column { border-top: 4px solid var(--ft-green); }
+    .wants-column { border-top: 4px solid var(--ft-orange); }
+
+    .needs-column h4 { color: var(--ft-green); }
+    .wants-column h4 { color: var(--ft-orange); }
+
+    .needs-column h4, .wants-column h4 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .check-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--ft-green);
+    }
+
+    /* Timing Section */
+    .timing-section {
+      background: rgba(255,244,105,0.1);
+      border: 1px solid var(--ft-yellow);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+
+    .timing-section h4 {
+      color: var(--ft-yellow);
+      margin-bottom: 16px;
+    }
+
+    .timing-options {
+      display: flex;
+      gap: 12px;
+    }
+
+    .timing-btn {
+      flex: 1;
+      padding: 16px;
+      background: transparent;
+      border: 2px solid var(--ft-grey-dark);
+      border-radius: 8px;
+      color: var(--ft-white);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .timing-btn:hover { border-color: var(--ft-yellow); }
+    .timing-btn.selected { border-color: var(--ft-yellow); background: rgba(255,244,105,0.1); }
+
+    /* Form Elements */
+    .input-group { margin-bottom: 32px; }
+
+    .input-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 16px;
+      background: var(--ft-grey-dark);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: var(--ft-white);
+      font-size: 1rem;
+    }
+
+    input:focus, select:focus { outline: none; border-color: var(--ft-orange); }
+
+    /* Slider */
+    input[type="range"] {
+      height: 8px;
+      -webkit-appearance: none;
+      background: var(--ft-grey-dark);
+      border-radius: 4px;
+      border: none;
+      padding: 0;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      background: var(--ft-orange);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    /* Verdict */
+    .verdict {
+      text-align: center;
+      padding: 48px;
+      border-radius: 16px;
+      margin-top: 48px;
+    }
+
+    .verdict.buy { background: linear-gradient(135deg, rgba(78,205,196,0.2), transparent); border: 2px solid var(--ft-green); }
+    .verdict.wait { background: linear-gradient(135deg, rgba(255,244,105,0.2), transparent); border: 2px solid var(--ft-yellow); }
+    .verdict.skip { background: linear-gradient(135deg, rgba(255,107,107,0.2), transparent); border: 2px solid var(--ft-red); }
+
+    .verdict-decision {
+      font-size: 3rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .verdict.buy .verdict-decision { color: var(--ft-green); }
+    .verdict.wait .verdict-decision { color: var(--ft-yellow); }
+    .verdict.skip .verdict-decision { color: var(--ft-red); }
+
+    /* Specific Option Recommendation */
+    .recommendation {
+      margin-top: 24px;
+      padding: 24px;
+      background: var(--ft-grey-dark);
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .recommendation h4 {
+      color: var(--ft-orange);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .recommendation .option {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .recommendation .reason {
+      color: var(--ft-grey);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: 16px 32px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--ft-yellow);
+      color: var(--ft-black);
+    }
+
+    /* Progress */
+    .progress-bar {
+      height: 4px;
+      background: var(--ft-grey-dark);
+      border-radius: 2px;
+      margin-bottom: 40px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--ft-orange);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Commitment */
+    .commitment-section {
+      background: var(--ft-grey-dark);
+      padding: 32px;
+      border-radius: 16px;
+      margin-top: 32px;
+    }
+
+    .ft-brand {
+      text-align: center;
+      margin-top: 64px;
+      padding-top: 32px;
+      border-top: 1px solid var(--ft-grey-dark);
+      color: var(--ft-grey);
+    }
+
+    @media (max-width: 768px) {
+      .needs-wants { grid-template-columns: 1fr; }
+      .timing-options { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="tool-header">
+      <span class="category-badge">Personal Purchase Decision</span>
+      <h1>{{tool_name}}</h1>
+      <p class="tagline" style="color: var(--ft-grey);">{{tagline}}</p>
+    </div>
+
+    <!-- Budget Reality Check -->
+    <div class="budget-check">
+      <h3>💰 Budget Reality Check</h3>
+      <div class="input-group">
+        <label class="input-label">What's the price you're looking at?</label>
+        <input type="number" id="priceInput" placeholder="$0" onchange="updateBudget()">
+      </div>
+      <div class="input-group">
+        <label class="input-label">What can you comfortably afford?</label>
+        <input type="number" id="budgetInput" placeholder="$0" onchange="updateBudget()">
+      </div>
+      <div class="budget-visual">
+        <span>$0</span>
+        <div class="budget-bar">
+          <div class="budget-fill" id="budgetFill"></div>
+          <div class="budget-marker" id="budgetMarker"></div>
+        </div>
+        <span id="budgetMax">$1000</span>
+      </div>
+      <div class="budget-labels">
+        <span>Within budget</span>
+        <span>Stretch</span>
+        <span>Over budget</span>
+      </div>
+    </div>
+
+    <!-- Needs vs Wants -->
+    <div class="needs-wants">
+      <div class="needs-column">
+        <h4>✓ Must-Haves (Needs)</h4>
+        <div id="needsList">
+          <div class="check-item">
+            <input type="checkbox" id="need1" onchange="updateScore()">
+            <label for="need1">Solves a real problem I have</label>
+          </div>
+          <div class="check-item">
+            <input type="checkbox" id="need2" onchange="updateScore()">
+            <label for="need2">Will use it regularly</label>
+          </div>
+          <div class="check-item">
+            <input type="checkbox" id="need3" onchange="updateScore()">
+            <label for="need3">Can't achieve this another way</label>
+          </div>
+        </div>
+      </div>
+      <div class="wants-column">
+        <h4>✧ Nice-to-Haves (Wants)</h4>
+        <div id="wantsList">
+          <div class="check-item">
+            <input type="checkbox" id="want1" onchange="updateScore()">
+            <label for="want1">Latest model/version</label>
+          </div>
+          <div class="check-item">
+            <input type="checkbox" id="want2" onchange="updateScore()">
+            <label for="want2">Premium features</label>
+          </div>
+          <div class="check-item">
+            <input type="checkbox" id="want3" onchange="updateScore()">
+            <label for="want3">Brand preference</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Should I Wait? -->
+    <div class="timing-section">
+      <h4>⏰ Should I Wait?</h4>
+      <p style="color: var(--ft-grey); margin-bottom: 16px;">Is there a reason to buy now vs. later?</p>
+      <div class="timing-options">
+        <button class="timing-btn" onclick="selectTiming('now')">Buy Now<br><small>Need it immediately</small></button>
+        <button class="timing-btn" onclick="selectTiming('soon')">Buy Soon<br><small>Within 1-3 months</small></button>
+        <button class="timing-btn" onclick="selectTiming('wait')">Can Wait<br><small>No urgency</small></button>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content" id="toolContent">
+      {{tool_content}}
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict" id="verdictDisplay">
+      <div class="verdict-decision" id="verdictDecision">THINKING...</div>
+      <p id="verdictMessage">Complete the assessment above.</p>
+
+      <div class="recommendation" id="recommendation" style="display: none;">
+        <h4>Our Recommendation</h4>
+        <p class="option" id="recOption"></p>
+        <p class="reason" id="recReason"></p>
+      </div>
+    </div>
+
+    <!-- Commitment -->
+    <div class="commitment-section" id="commitmentSection" style="display: none;">
+      <h3 style="margin-bottom: 24px;">Your Decision</h3>
+      <div class="input-group">
+        <label class="input-label">What will you do?</label>
+        <textarea id="commitmentText" rows="2" placeholder="I will..."></textarea>
+      </div>
+      <div class="input-group">
+        <label class="input-label">By when?</label>
+        <input type="date" id="commitmentDeadline">
+      </div>
+      <button class="btn btn-primary" onclick="submitCommitment()">Lock It In</button>
+    </div>
+
+    <div class="ft-brand">
+      Built with <a href="https://fasttrack.co" style="color: var(--ft-orange);">Fast Track</a>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      price: 0,
+      budget: 0,
+      needs: 0,
+      wants: 0,
+      timing: null,
+      score: 0
+    };
+
+    function updateBudget() {
+      state.price = parseFloat(document.getElementById('priceInput').value) || 0;
+      state.budget = parseFloat(document.getElementById('budgetInput').value) || 0;
+
+      const max = Math.max(state.price, state.budget) * 1.5 || 1000;
+      document.getElementById('budgetMax').textContent = '$' + max.toFixed(0);
+
+      const fillPercent = (state.budget / max) * 100;
+      document.getElementById('budgetFill').style.width = fillPercent + '%';
+
+      const markerPercent = (state.price / max) * 100;
+      document.getElementById('budgetMarker').style.left = markerPercent + '%';
+
+      updateScore();
+    }
+
+    function selectTiming(timing) {
+      state.timing = timing;
+      document.querySelectorAll('.timing-btn').forEach(b => b.classList.remove('selected'));
+      event.target.closest('.timing-btn').classList.add('selected');
+      updateScore();
+    }
+
+    function updateScore() {
+      // Count needs checked
+      state.needs = document.querySelectorAll('#needsList input:checked').length;
+      state.wants = document.querySelectorAll('#wantsList input:checked').length;
+
+      let score = 0;
+
+      // Needs are critical
+      score += state.needs * 25; // Max 75 from needs
+
+      // Budget fit
+      if (state.budget > 0 && state.price > 0) {
+        if (state.price <= state.budget) score += 20;
+        else if (state.price <= state.budget * 1.2) score += 10;
+        else score -= 10;
+      }
+
+      // Timing
+      if (state.timing === 'now') score += 10;
+      else if (state.timing === 'wait') score -= 10;
+
+      // Wants are nice but not critical
+      score += state.wants * 2; // Max 6 from wants
+
+      state.score = Math.max(0, Math.min(100, score));
+      updateVerdict();
+      updateProgress();
+    }
+
+    function updateVerdict() {
+      const verdict = document.getElementById('verdictDisplay');
+      const decision = document.getElementById('verdictDecision');
+      const message = document.getElementById('verdictMessage');
+      const rec = document.getElementById('recommendation');
+      const recOption = document.getElementById('recOption');
+      const recReason = document.getElementById('recReason');
+      const commitment = document.getElementById('commitmentSection');
+
+      verdict.classList.remove('buy', 'wait', 'skip');
+
+      if (state.needs < 2) {
+        verdict.classList.add('skip');
+        decision.textContent = 'SKIP IT';
+        message.textContent = "You haven't identified enough real needs.";
+        rec.style.display = 'none';
+      } else if (state.price > state.budget * 1.3 && state.budget > 0) {
+        verdict.classList.add('skip');
+        decision.textContent = 'OVER BUDGET';
+        message.textContent = 'This purchase would stretch you too thin.';
+        rec.style.display = 'block';
+        recOption.textContent = 'Look for alternatives under $' + state.budget.toFixed(0);
+        recReason.textContent = 'Your needs can likely be met at a lower price point.';
+      } else if (state.score >= 60) {
+        verdict.classList.add('buy');
+        decision.textContent = 'BUY NOW';
+        message.textContent = 'This purchase makes sense for you.';
+        rec.style.display = 'block';
+        recOption.textContent = state.wants >= 2 ? 'Go for the premium option' : 'The basic model will serve you well';
+        recReason.textContent = state.timing === 'now' ? 'No reason to wait.' : 'Set a purchase date to commit.';
+      } else {
+        verdict.classList.add('wait');
+        decision.textContent = 'WAIT';
+        message.textContent = 'Not urgent enough to buy now.';
+        rec.style.display = 'block';
+        recOption.textContent = 'Revisit in 30 days';
+        recReason.textContent = 'See if you still want it after some time passes.';
+      }
+
+      commitment.style.display = state.score > 0 ? 'block' : 'none';
+    }
+
+    function updateProgress() {
+      const checks = document.querySelectorAll('input[type="checkbox"]').length;
+      const checked = document.querySelectorAll('input[type="checkbox"]:checked').length;
+      let progress = (checked / checks) * 50;
+      if (state.price > 0) progress += 20;
+      if (state.budget > 0) progress += 15;
+      if (state.timing) progress += 15;
+      document.getElementById('progressFill').style.width = Math.min(100, progress) + '%';
+    }
+
+    function submitCommitment() {
+      const commitment = document.getElementById('commitmentText').value;
+      const deadline = document.getElementById('commitmentDeadline').value;
+      alert('Decision locked!\n\n' + commitment + '\nBy: ' + deadline);
+    }
+
+    document.addEventListener('DOMContentLoaded', updateProgress);
+  </script>
+</body>
+</html>

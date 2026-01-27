@@ -1,0 +1,141 @@
+{
+  "description": "Additional n8n nodes to add to the existing workflow for category routing and GitHub deployment",
+  "instructions": "Add these nodes to your existing n8n workflow",
+
+  "nodes_to_add": [
+    {
+      "name": "Category Router",
+      "description": "Add this Code node after 'Parse & Normalize Input' to route by category",
+      "type": "n8n-nodes-base.code",
+      "position_after": "Parse & Normalize Input",
+      "parameters": {
+        "jsCode": "// Category Router - Routes tool generation based on category\n// Adds category-specific prompts and template selection\n\nconst input = $input.first().json;\n\n// Extract category from input (default to b2b_service if not specified)\nconst category = input.metadata?.category || input.category || 'b2b_service';\n\n// Category-specific configurations\nconst CATEGORIES = {\n  b2b_product: {\n    name: 'B2B Product',\n    promptAdditions: `\n## B2B PRODUCT CONTEXT\nThe user is evaluating a PRODUCT purchase for their business.\n\nKey considerations:\n- Total Cost of Ownership (TCO) - not just purchase price\n- Integration with existing systems\n- Vendor stability and support\n- Implementation timeline and resources\n- Scalability for growth\n\nYour tool MUST:\n1. Calculate or estimate ROI\n2. Include integration/compatibility assessment\n3. Force a GO/NO-GO decision with specific recommendation\n4. Include timeline for implementation\n`,\n    template: 'b2b-product',\n    scoringWeights: { decision: 25, roi: 30, time: 15, risk: 20, commitment: 10 }\n  },\n  b2b_service: {\n    name: 'B2B Service',\n    promptAdditions: `\n## B2B SERVICE CONTEXT\nThe user is evaluating a SERVICE provider (agency, consultant, partner).\n\nKey considerations:\n- Provider expertise and track record\n- Cultural and communication fit\n- Pricing model alignment\n- Knowledge transfer and IP\n- Exit strategy and switching costs\n\nYour tool MUST:\n1. Assess cultural/communication fit\n2. Evaluate pricing model suitability\n3. Include red flags checklist\n4. Force a HIRE/DON'T HIRE decision\n5. Include contract negotiation priorities if HIRE\n`,\n    template: 'b2b-service',\n    scoringWeights: { decision: 20, roi: 20, time: 15, risk: 25, commitment: 20 }\n  },\n  b2c_product: {\n    name: 'B2C Product',\n    promptAdditions: `\n## B2C PRODUCT CONTEXT\nThe user is making a PERSONAL product purchase.\n\nKey considerations:\n- Budget and financing options\n- Personal needs vs wants\n- Lifestyle fit and daily use\n- Long-term value vs immediate gratification\n- Timing - is now the right time?\n\nYour tool MUST:\n1. Separate needs from wants explicitly\n2. Include budget reality check\n3. Address the \"should I wait?\" question\n4. Force a BUY NOW / WAIT / SKIP decision\n5. If BUY NOW - specify exactly which option\n`,\n    template: 'b2c-product',\n    scoringWeights: { decision: 30, roi: 15, time: 20, risk: 15, commitment: 20 }\n  },\n  b2c_service: {\n    name: 'B2C Service',\n    promptAdditions: `\n## B2C SERVICE CONTEXT\nThe user is evaluating a PERSONAL service (coaching, fitness, education).\n\nKey considerations:\n- Personal chemistry and trust\n- Track record with similar clients\n- Value alignment with provider\n- Commitment level required\n- Results timeline expectations\n\nYour tool MUST:\n1. Assess personal readiness for the service\n2. Evaluate provider fit beyond credentials\n3. Set realistic outcome expectations\n4. Force a COMMIT / NOT READY / WRONG FIT decision\n5. If COMMIT - include accountability mechanism\n`,\n    template: 'b2c-service',\n    scoringWeights: { decision: 25, roi: 15, time: 15, risk: 20, commitment: 25 }\n  }\n};\n\nconst config = CATEGORIES[category] || CATEGORIES.b2b_service;\n\nreturn [{\n  json: {\n    ...input,\n    category,\n    category_config: config,\n    prompt_additions: config.promptAdditions,\n    template_id: config.template,\n    scoring_weights: config.scoringWeights\n  }\n}];"
+      }
+    },
+    {
+      "name": "GitHub Push",
+      "description": "Add this HTTP Request node after 'Insert documents' to push tool to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "position_after": "Insert documents",
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $env.GITHUB_OWNER }}/{{ $env.GITHUB_REPO }}/contents/tools/{{ $json.tool_slug }}/index.html",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"Add tool: {{ $json.tool_name }}\",\n  \"content\": \"{{ Buffer.from($json.tool_html || '').toString('base64') }}\",\n  \"branch\": \"main\"\n}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GITHUB_CREDENTIALS_ID",
+          "name": "GitHub Token"
+        }
+      }
+    },
+    {
+      "name": "GitHub Push Config",
+      "description": "Push config.json alongside the tool HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "position_after": "GitHub Push",
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $env.GITHUB_OWNER }}/{{ $env.GITHUB_REPO }}/contents/tools/{{ $json.tool_slug }}/config.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"Add config: {{ $json.tool_name }}\",\n  \"content\": \"{{ Buffer.from(JSON.stringify({\n    tool_id: $json.job_id,\n    tool_name: $json.tool_name,\n    tool_slug: $json.tool_slug,\n    category: $json.category || 'b2b_service',\n    decision: $json.decision,\n    tagline: $json.tagline,\n    estimated_time: $json.estimated_time,\n    qa_score: $json.qa_score,\n    revision_count: $json.attempt,\n    created_at: new Date().toISOString()\n  }, null, 2)).toString('base64') }}\",\n  \"branch\": \"main\"\n}"
+      }
+    },
+    {
+      "name": "Merge Category Context",
+      "description": "Update the existing Merge Context node to include category prompt additions",
+      "type": "n8n-nodes-base.code",
+      "replaces": "Merge Context",
+      "parameters": {
+        "jsCode": "// Merge all context for AI agent INCLUDING category-specific prompts\nconst input = $('Category Router').first().json;\nconst brand = $('MongoDB - Brand Guidelines').first().json;\nconst writing = $('MongoDB - Writing Guide').first().json;\nconst criteria = $('MongoDB - 8 Point Criteria').first().json;\n\n// Fetch example tool\nlet example = '';\ntry {\n  const exampleDoc = $('MongoDB - Tool Example').first().json;\n  example = exampleDoc?.markdown || '';\n} catch (e) {\n  example = '';\n}\n\nreturn [{\n  json: {\n    ...input,\n    context: {\n      brand_guidelines: brand?.content || '',\n      writing_guide: writing?.content || '',\n      eight_point_criteria: criteria?.content || '',\n      example_tool: example,\n      // NEW: Category-specific prompt additions\n      category_prompt: input.prompt_additions || ''\n    }\n  }\n}];"
+      }
+    },
+    {
+      "name": "Update Tool Architect Prompt",
+      "description": "Update the Tool Architect Agent prompt to include category context",
+      "type": "instruction",
+      "update_node": "Tool Architect Agent",
+      "update_field": "text",
+      "new_value": "={{ $json.context.example_tool ? '## REFERENCE EXAMPLE (Score: 98/100)\\n\\nStudy this structure and match its quality:\\n\\n' + $json.context.example_tool + '\\n\\n---\\n\\n' : '' }}## Tool Request\n\n{{ $json.source }}\n\n## Category\n{{ $json.category_config?.name || 'B2B Service' }}\n\n{{ $json.context.category_prompt }}\n\n## Brand Guidelines\n{{ $json.context.brand_guidelines || 'Use Fast Track brand: bold, direct, action-oriented.' }}\n\n## Writing Guide\n{{ $json.context.writing_guide || 'No hedge words. Short sentences. Action verbs.' }}\n\n## 8-Point Criteria\n{{ $json.context.eight_point_criteria || 'Force decision, zero instructions, instant feedback, gamification, clear verdicts, commitment, Fast Track DNA.' }}\n\nGenerate the complete tool specification in Markdown format. Follow the EXACT structure from the reference example above. Ensure ALL 8 criteria are satisfied.\n\nIMPORTANT: This is a {{ $json.category_config?.name || 'B2B Service' }} tool. Apply the category-specific requirements above."
+    }
+  ],
+
+  "workflow_modifications": {
+    "connections": [
+      {
+        "from": "Parse & Normalize Input",
+        "to": "Category Router",
+        "description": "Route through category router before fetching context"
+      },
+      {
+        "from": "Category Router",
+        "to": ["MongoDB - Brand Guidelines", "MongoDB - Writing Guide", "MongoDB - 8 Point Criteria", "MongoDB - Tool Example"],
+        "description": "Parallel fetch context documents"
+      },
+      {
+        "from": "Insert documents",
+        "to": "GitHub Push",
+        "description": "Push to GitHub after MongoDB insert"
+      },
+      {
+        "from": "GitHub Push",
+        "to": "GitHub Push Config",
+        "description": "Push config after HTML"
+      },
+      {
+        "from": "GitHub Push Config",
+        "to": "Respond to Webhook",
+        "description": "Respond after GitHub push"
+      }
+    ],
+
+    "environment_variables": [
+      {
+        "name": "GITHUB_OWNER",
+        "description": "GitHub repository owner/organization"
+      },
+      {
+        "name": "GITHUB_REPO",
+        "description": "GitHub repository name for tools"
+      }
+    ],
+
+    "credentials_needed": [
+      {
+        "type": "httpHeaderAuth",
+        "name": "GitHub Token",
+        "header_name": "Authorization",
+        "header_value": "Bearer YOUR_GITHUB_PAT"
+      }
+    ]
+  }
+}

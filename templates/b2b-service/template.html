@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{tool_name}} | Fast Track B2B Service</title>
+  <style>
+    :root {
+      --ft-black: #000000;
+      --ft-white: #FFFFFF;
+      --ft-grey: #B2B2B2;
+      --ft-grey-dark: #1A1A1A;
+      --ft-yellow: #FFF469;
+      --ft-red: #FF6B6B;
+      --ft-green: #4ECDC4;
+      --ft-purple: #9B59B6;
+      --ft-accent: var(--ft-purple);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--ft-black);
+      color: var(--ft-white);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .tool-header {
+      text-align: center;
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--ft-grey-dark);
+    }
+
+    .tool-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+
+    .category-badge {
+      display: inline-block;
+      background: var(--ft-purple);
+      color: var(--ft-white);
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    /* Provider Fit Matrix - B2B Service specific */
+    .fit-matrix {
+      background: var(--ft-grey-dark);
+      border: 2px solid var(--ft-purple);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .fit-matrix h3 {
+      color: var(--ft-purple);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 24px;
+    }
+
+    .fit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .fit-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+    }
+
+    .fit-item .label { color: var(--ft-grey); }
+
+    .fit-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .fit-indicator.green { background: var(--ft-green); }
+    .fit-indicator.yellow { background: var(--ft-yellow); }
+    .fit-indicator.red { background: var(--ft-red); }
+
+    /* Red Flags Section */
+    .red-flags {
+      background: rgba(255,107,107,0.1);
+      border: 1px solid var(--ft-red);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+
+    .red-flags h4 {
+      color: var(--ft-red);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .red-flag-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,107,107,0.2);
+    }
+
+    .red-flag-item:last-child { border-bottom: none; }
+
+    .red-flag-check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--ft-red);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .red-flag-check.checked {
+      background: var(--ft-red);
+    }
+
+    /* Cultural Fit Radar */
+    .cultural-fit {
+      text-align: center;
+      margin: 32px 0;
+    }
+
+    .fit-score-circle {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 8px solid var(--ft-grey-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      position: relative;
+    }
+
+    .fit-score-circle::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 8px solid transparent;
+      border-top-color: var(--ft-purple);
+      transform: rotate(45deg);
+    }
+
+    .fit-score-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+    }
+
+    /* Pricing Model Comparison */
+    .pricing-models {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .pricing-card {
+      background: var(--ft-grey-dark);
+      border: 2px solid transparent;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .pricing-card:hover { border-color: var(--ft-grey); }
+    .pricing-card.selected { border-color: var(--ft-purple); background: rgba(155,89,182,0.1); }
+
+    .pricing-card h4 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .pricing-card p {
+      font-size: 0.875rem;
+      color: var(--ft-grey);
+    }
+
+    /* Form Elements */
+    .input-group { margin-bottom: 32px; }
+
+    .input-label {
+      display: block;
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 16px;
+      font-size: 1rem;
+      background: var(--ft-grey-dark);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: var(--ft-white);
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--ft-purple);
+    }
+
+    /* Verdict */
+    .verdict {
+      text-align: center;
+      padding: 48px;
+      border-radius: 16px;
+      margin-top: 48px;
+    }
+
+    .verdict.hire { background: linear-gradient(135deg, rgba(78,205,196,0.2), transparent); border: 2px solid var(--ft-green); }
+    .verdict.evaluate { background: linear-gradient(135deg, rgba(255,244,105,0.2), transparent); border: 2px solid var(--ft-yellow); }
+    .verdict.pass { background: linear-gradient(135deg, rgba(255,107,107,0.2), transparent); border: 2px solid var(--ft-red); }
+
+    .verdict-decision {
+      font-size: 3rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .verdict.hire .verdict-decision { color: var(--ft-green); }
+    .verdict.evaluate .verdict-decision { color: var(--ft-yellow); }
+    .verdict.pass .verdict-decision { color: var(--ft-red); }
+
+    /* Contract Priorities */
+    .contract-priorities {
+      margin-top: 24px;
+      text-align: left;
+      background: var(--ft-grey-dark);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    .contract-priorities h4 {
+      color: var(--ft-purple);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .priority-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .priority-number {
+      width: 24px;
+      height: 24px;
+      background: var(--ft-purple);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: 16px 32px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--ft-yellow);
+      color: var(--ft-black);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+    }
+
+    /* Progress */
+    .progress-bar {
+      height: 4px;
+      background: var(--ft-grey-dark);
+      border-radius: 2px;
+      margin-bottom: 40px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--ft-purple);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .ft-brand {
+      text-align: center;
+      margin-top: 64px;
+      padding-top: 32px;
+      border-top: 1px solid var(--ft-grey-dark);
+      color: var(--ft-grey);
+    }
+
+    @media (max-width: 768px) {
+      .fit-grid, .pricing-models { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="tool-header">
+      <span class="category-badge">B2B Service Evaluation</span>
+      <h1>{{tool_name}}</h1>
+      <p class="tagline">{{tagline}}</p>
+    </div>
+
+    <!-- Provider Fit Matrix -->
+    <div class="fit-matrix">
+      <h3>Provider Fit Assessment</h3>
+      <div class="fit-grid">
+        <div class="fit-item">
+          <span class="label">Expertise Match</span>
+          <span class="fit-indicator" id="expertiseFit"></span>
+        </div>
+        <div class="fit-item">
+          <span class="label">Cultural Fit</span>
+          <span class="fit-indicator" id="culturalFit"></span>
+        </div>
+        <div class="fit-item">
+          <span class="label">Communication Style</span>
+          <span class="fit-indicator" id="commFit"></span>
+        </div>
+        <div class="fit-item">
+          <span class="label">Pricing Alignment</span>
+          <span class="fit-indicator" id="priceFit"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Red Flags -->
+    <div class="red-flags">
+      <h4>⚠️ Red Flag Checklist</h4>
+      <div class="red-flag-item">
+        <input type="checkbox" class="red-flag-check" id="rf1">
+        <label for="rf1">Unwilling to provide references</label>
+      </div>
+      <div class="red-flag-item">
+        <input type="checkbox" class="red-flag-check" id="rf2">
+        <label for="rf2">Vague about deliverables or timelines</label>
+      </div>
+      <div class="red-flag-item">
+        <input type="checkbox" class="red-flag-check" id="rf3">
+        <label for="rf3">High team turnover mentioned</label>
+      </div>
+      <div class="red-flag-item">
+        <input type="checkbox" class="red-flag-check" id="rf4">
+        <label for="rf4">Pushes for long-term lock-in upfront</label>
+      </div>
+      <div class="red-flag-item">
+        <input type="checkbox" class="red-flag-check" id="rf5">
+        <label for="rf5">No clear escalation or exit process</label>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content" id="toolContent">
+      {{tool_content}}
+    </div>
+
+    <!-- Pricing Model Selection -->
+    <div class="section">
+      <h3 class="input-label">Preferred Pricing Model</h3>
+      <div class="pricing-models">
+        <div class="pricing-card" onclick="selectPricing('retainer')">
+          <h4>Retainer</h4>
+          <p>Fixed monthly fee for ongoing support</p>
+        </div>
+        <div class="pricing-card" onclick="selectPricing('project')">
+          <h4>Project-Based</h4>
+          <p>Fixed scope and price per engagement</p>
+        </div>
+        <div class="pricing-card" onclick="selectPricing('outcome')">
+          <h4>Outcome-Based</h4>
+          <p>Pay based on results delivered</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict" id="verdictDisplay">
+      <div class="verdict-decision" id="verdictDecision">EVALUATE</div>
+      <p id="verdictMessage">Complete assessment to see recommendation.</p>
+
+      <!-- Contract Priorities (shown on HIRE) -->
+      <div class="contract-priorities" id="contractPriorities" style="display: none;">
+        <h4>Contract Negotiation Priorities</h4>
+        <div class="priority-item">
+          <span class="priority-number">1</span>
+          <span>Clear deliverables and success metrics</span>
+        </div>
+        <div class="priority-item">
+          <span class="priority-number">2</span>
+          <span>30-day exit clause after initial period</span>
+        </div>
+        <div class="priority-item">
+          <span class="priority-number">3</span>
+          <span>Named team members commitment</span>
+        </div>
+        <div class="priority-item">
+          <span class="priority-number">4</span>
+          <span>IP ownership clarity</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commitment -->
+    <div class="commitment-section" id="commitmentSection" style="display: none; margin-top: 32px; background: var(--ft-grey-dark); padding: 32px; border-radius: 16px;">
+      <h3 style="margin-bottom: 24px;">Your Decision</h3>
+      <div class="input-group">
+        <label class="input-label">Decision and next steps:</label>
+        <textarea id="commitmentText" rows="3" placeholder="We will [HIRE/PASS] because..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="submitCommitment()">Lock In Decision</button>
+    </div>
+
+    <div class="ft-brand">
+      Built with <a href="https://fasttrack.co" style="color: var(--ft-purple);">Fast Track</a> | B2B Service Evaluation
+    </div>
+  </div>
+
+  <script>
+    const state = { inputs: {}, redFlags: 0, score: 50, pricing: null };
+
+    function selectPricing(model) {
+      state.pricing = model;
+      document.querySelectorAll('.pricing-card').forEach(c => c.classList.remove('selected'));
+      event.target.closest('.pricing-card').classList.add('selected');
+      calculateScore();
+    }
+
+    function countRedFlags() {
+      state.redFlags = document.querySelectorAll('.red-flag-check:checked').length;
+      calculateScore();
+    }
+
+    function updateFitIndicators() {
+      const indicators = ['expertiseFit', 'culturalFit', 'commFit', 'priceFit'];
+      indicators.forEach(id => {
+        const el = document.getElementById(id);
+        const score = state.inputs[id] || 50;
+        el.classList.remove('green', 'yellow', 'red');
+        if (score >= 70) el.classList.add('green');
+        else if (score >= 40) el.classList.add('yellow');
+        else el.classList.add('red');
+      });
+    }
+
+    function calculateScore() {
+      let score = 50;
+      score -= state.redFlags * 15; // Each red flag is serious
+      if (state.pricing === 'outcome') score += 10;
+      score = Math.max(0, Math.min(100, score));
+      state.score = score;
+      updateVerdict();
+    }
+
+    function updateVerdict() {
+      const verdict = document.getElementById('verdictDisplay');
+      const decision = document.getElementById('verdictDecision');
+      const message = document.getElementById('verdictMessage');
+      const priorities = document.getElementById('contractPriorities');
+      const commitment = document.getElementById('commitmentSection');
+
+      verdict.classList.remove('hire', 'evaluate', 'pass');
+
+      if (state.redFlags >= 3) {
+        verdict.classList.add('pass');
+        decision.textContent = 'PASS';
+        message.textContent = 'Too many red flags. Find another provider.';
+        priorities.style.display = 'none';
+      } else if (state.score >= 60) {
+        verdict.classList.add('hire');
+        decision.textContent = 'HIRE';
+        message.textContent = 'Strong fit. Proceed to contract negotiation.';
+        priorities.style.display = 'block';
+      } else {
+        verdict.classList.add('evaluate');
+        decision.textContent = 'MORE DUE DILIGENCE';
+        message.textContent = 'Request references and a pilot project.';
+        priorities.style.display = 'none';
+      }
+      commitment.style.display = 'block';
+    }
+
+    function submitCommitment() {
+      alert('Decision locked!\n\n' + document.getElementById('commitmentText').value);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.red-flag-check').forEach(cb => {
+        cb.addEventListener('change', countRedFlags);
+      });
+      updateFitIndicators();
+    });
+  </script>
+</body>
+</html>

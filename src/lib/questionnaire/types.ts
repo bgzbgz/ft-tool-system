@@ -4,6 +4,20 @@
  * Per contracts/questionnaire-state.yaml and contracts/submit-payload.yaml
  */
 
+// ========== TOOL CATEGORY OPTIONS ==========
+
+/**
+ * Tool category - determines template and AI prompts
+ */
+export type ToolCategory = 'b2b_product' | 'b2b_service' | 'b2c_product' | 'b2c_service';
+
+export const TOOL_CATEGORY_OPTIONS: { value: ToolCategory; label: string; description: string }[] = [
+  { value: 'b2b_product', label: 'B2B Product', description: 'Business evaluating a product purchase (software, equipment, etc.)' },
+  { value: 'b2b_service', label: 'B2B Service', description: 'Business evaluating a service provider (agency, consultant, etc.)' },
+  { value: 'b2c_product', label: 'B2C Product', description: 'Individual making a personal product purchase' },
+  { value: 'b2c_service', label: 'B2C Service', description: 'Individual evaluating a personal service (coaching, fitness, etc.)' }
+];
+
 // ========== INPUT TYPE OPTIONS ==========
 
 /**
@@ -22,9 +36,10 @@ export const INPUT_TYPE_OPTIONS: { value: InputTypeOption; label: string }[] = [
 // ========== QUESTIONNAIRE STATE ==========
 
 /**
- * Contains the user's responses to all 4 questions
+ * Contains the user's responses to all questions
  */
 export interface QuestionnaireAnswers {
+  category: ToolCategory;
   decision: string;
   teaching: string;
   inputTypes: InputTypeOption[];
@@ -43,7 +58,7 @@ export interface QuestionnaireState {
 
 // ========== QUESTION CONFIG ==========
 
-export type QuestionInputType = 'text' | 'multiselect';
+export type QuestionInputType = 'text' | 'multiselect' | 'category';
 
 /**
  * Configuration for each question step
@@ -54,7 +69,7 @@ export interface QuestionConfig {
   question: string;
   inputType: QuestionInputType;
   placeholder?: string;
-  options?: { value: InputTypeOption; label: string }[];
+  options?: { value: string; label: string; description?: string }[];
   maxLength: number;
 }
 
@@ -64,6 +79,7 @@ export interface QuestionConfig {
  * The source object nested in the payload
  */
 export interface ToolRequestSource {
+  category: ToolCategory;
   decision: string;
   teaching: string;
   input_types: InputTypeOption[];

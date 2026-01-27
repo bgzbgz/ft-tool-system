@@ -1,0 +1,177 @@
+name: Deploy Tools to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/**'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate index page
+        run: |
+          # Create an index.html listing all tools
+          cat > tools/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Fast Track Tools</title>
+            <style>
+              :root {
+                --ft-black: #000000;
+                --ft-white: #FFFFFF;
+                --ft-yellow: #FFF469;
+                --ft-grey: #B2B2B2;
+              }
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: 'Inter', -apple-system, sans-serif;
+                background: var(--ft-black);
+                color: var(--ft-white);
+                min-height: 100vh;
+                padding: 40px 20px;
+              }
+              .container { max-width: 1200px; margin: 0 auto; }
+              h1 {
+                font-size: 2.5rem;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                margin-bottom: 40px;
+                text-align: center;
+              }
+              .tools-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                gap: 24px;
+              }
+              .tool-card {
+                background: #1A1A1A;
+                border-radius: 12px;
+                padding: 24px;
+                transition: transform 0.2s, box-shadow 0.2s;
+              }
+              .tool-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 8px 24px rgba(255,244,105,0.1);
+              }
+              .tool-card h2 {
+                font-size: 1.25rem;
+                margin-bottom: 8px;
+              }
+              .tool-card .category {
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                color: var(--ft-yellow);
+                margin-bottom: 12px;
+              }
+              .tool-card .tagline {
+                color: var(--ft-grey);
+                margin-bottom: 16px;
+              }
+              .tool-card a {
+                display: inline-block;
+                padding: 12px 24px;
+                background: var(--ft-yellow);
+                color: var(--ft-black);
+                text-decoration: none;
+                font-weight: 600;
+                border-radius: 6px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Fast Track Tools</h1>
+              <div class="tools-grid" id="toolsGrid">
+                <!-- Tools will be injected here -->
+              </div>
+            </div>
+            <script>
+              // This will be populated by the build script
+              const tools = TOOLS_DATA;
+              const grid = document.getElementById('toolsGrid');
+              tools.forEach(tool => {
+                grid.innerHTML += `
+                  <div class="tool-card">
+                    <div class="category">${tool.category.replace('_', ' ')}</div>
+                    <h2>${tool.tool_name}</h2>
+                    <p class="tagline">${tool.tagline || ''}</p>
+                    <a href="${tool.slug}/">Open Tool</a>
+                  </div>
+                `;
+              });
+            </script>
+          </body>
+          </html>
+          EOF
+
+          # Read all tool configs and generate tools data
+          TOOLS_JSON="["
+          FIRST=true
+          for config in tools/*/config.json; do
+            if [ -f "$config" ]; then
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                TOOLS_JSON+=","
+              fi
+              TOOL_DATA=$(cat "$config")
+              SLUG=$(dirname "$config" | xargs basename)
+              TOOLS_JSON+=$(echo "$TOOL_DATA" | jq --arg slug "$slug" '. + {slug: $slug}')
+            fi
+          done
+          TOOLS_JSON+="]"
+
+          # Inject tools data into index.html
+          sed -i "s|TOOLS_DATA|$TOOLS_JSON|g" tools/index.html
+
+          echo "✅ Index page generated with $(echo "$TOOLS_JSON" | jq length) tools"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'tools'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
