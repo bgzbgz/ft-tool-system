@@ -1,0 +1,443 @@
+{
+  "name": "Fast Track Tool Factory - With Category Routing & GitHub",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tool-factory",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-832, 592],
+      "id": "853294da-3a7a-4f73-b3ca-6cde8d206d6d",
+      "name": "tool-factory",
+      "webhookId": "b17aa9c0-88cb-48fe-a0f2-43096c382dea"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse & Normalize Input - handles n8n webhook wrapper\n// Data comes in $input.first().json.body for webhooks\n\nconst raw = $input.first().json;\n\n// n8n webhooks wrap payload in 'body'\nconst input = raw.body || raw;\n\n// Extract job_id\nconst job_id = input.job_id || `job_${Date.now()}`;\n\n// Extract instruction text - check multiple possible locations\nconst source = input.source?.text || input.source || input.instruction_text || input.text || '';\n\n// Extract category from source or metadata\nconst category = input.source?.category || input.category || input.metadata?.category || 'b2b_service';\n\n// Validate we have something to work with\nif (!source || source.length < 10) {\n  return [{\n    json: {\n      success: false,\n      error: 'Missing or invalid instruction text',\n      job_id: job_id,\n      debug_received: {\n        has_body: !!raw.body,\n        body_keys: raw.body ? Object.keys(raw.body) : [],\n        raw_keys: Object.keys(raw),\n        source_type: typeof input.source,\n        source_preview: String(source).substring(0, 100)\n      }\n    }\n  }];\n}\n\nconst callback_url = input.callback_url || null;\nconst metadata = input.metadata || {};\n\nreturn [{\n  json: {\n    job_id,\n    source,\n    category,\n    callback_url,\n    metadata,\n    attempt: 1,\n    max_attempts: 3\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-624, 592],
+      "id": "40773e43-6081-4cfa-82b7-043395646db3",
+      "name": "Parse & Normalize Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Category Router - Routes tool generation based on category\n// Adds category-specific prompts and template selection\n\nconst input = $input.first().json;\n\n// Extract category (default to b2b_service if not specified)\nconst category = input.category || 'b2b_service';\n\n// Category-specific configurations\nconst CATEGORIES = {\n  b2b_product: {\n    name: 'B2B Product',\n    promptAdditions: `\n## B2B PRODUCT CONTEXT\nThe user is evaluating a PRODUCT purchase for their business.\n\nKey considerations:\n- Total Cost of Ownership (TCO) - not just purchase price\n- Integration with existing systems\n- Vendor stability and support\n- Implementation timeline and resources\n- Scalability for growth\n- Security and compliance requirements\n\nYour tool MUST:\n1. Calculate or estimate ROI within the tool\n2. Include integration/compatibility assessment\n3. Force a GO/NO-GO decision with specific vendor/product recommendation\n4. Include timeline for implementation decision\n\nAVOID:\n- Generic feature comparisons without business impact\n- Vague \"it depends\" conclusions\n- Missing the total cost perspective\n`,\n    template: 'b2b-product',\n    scoringWeights: { decision: 25, roi: 30, time: 15, risk: 20, commitment: 10 }\n  },\n  b2b_service: {\n    name: 'B2B Service',\n    promptAdditions: `\n## B2B SERVICE CONTEXT\nThe user is evaluating a SERVICE provider (agency, consultant, partner).\n\nKey considerations:\n- Provider expertise and track record\n- Cultural and communication fit\n- Pricing model alignment (retainer vs project vs outcome-based)\n- Scalability of the relationship\n- Knowledge transfer and IP considerations\n- Exit strategy and switching costs\n\nYour tool MUST:\n1. Assess cultural/communication fit (not just capability)\n2. Evaluate pricing model suitability for their needs\n3. Include red flags checklist\n4. Force a HIRE/DON'T HIRE decision with specific action\n5. Include contract negotiation priorities if HIRE\n\nAVOID:\n- Focusing only on cost comparison\n- Ignoring relationship dynamics\n- Missing the long-term partnership perspective\n`,\n    template: 'b2b-service',\n    scoringWeights: { decision: 20, roi: 20, time: 15, risk: 25, commitment: 20 }\n  },\n  b2c_product: {\n    name: 'B2C Product',\n    promptAdditions: `\n## B2C PRODUCT CONTEXT\nThe user is making a PERSONAL product purchase decision.\n\nKey considerations:\n- Budget and financing options\n- Personal needs vs wants clarity\n- Lifestyle fit and daily use patterns\n- Long-term value vs immediate gratification\n- Comparison with alternatives\n- Timing - is now the right time?\n\nYour tool MUST:\n1. Separate needs from wants explicitly\n2. Include budget reality check\n3. Address the \"should I wait?\" question\n4. Force a BUY NOW / WAIT / SKIP decision\n5. If BUY NOW - specify exactly which option\n\nAVOID:\n- Overcomplicating with business metrics\n- Ignoring emotional/lifestyle factors\n- Being preachy about spending\n`,\n    template: 'b2c-product',\n    scoringWeights: { decision: 30, roi: 15, time: 20, risk: 15, commitment: 20 }\n  },\n  b2c_service: {\n    name: 'B2C Service',\n    promptAdditions: `\n## B2C SERVICE CONTEXT\nThe user is evaluating a PERSONAL service (coaching, education, fitness, etc.).\n\nKey considerations:\n- Personal chemistry and trust\n- Track record with similar clients\n- Value alignment with provider\n- Commitment level required\n- Results timeline expectations\n- Cost vs transformation value\n\nYour tool MUST:\n1. Assess personal readiness for the service\n2. Evaluate provider fit beyond credentials\n3. Set realistic outcome expectations\n4. Force a COMMIT / NOT READY / WRONG FIT decision\n5. If COMMIT - include accountability mechanism\n\nAVOID:\n- Treating personal services like business transactions\n- Ignoring the relationship/trust element\n- Focusing only on credentials over fit\n`,\n    template: 'b2c-service',\n    scoringWeights: { decision: 25, roi: 15, time: 15, risk: 20, commitment: 25 }\n  }\n};\n\nconst config = CATEGORIES[category] || CATEGORIES.b2b_service;\n\nreturn [{\n  json: {\n    ...input,\n    category,\n    category_config: config,\n    prompt_additions: config.promptAdditions,\n    template_id: config.template,\n    scoring_weights: config.scoringWeights\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 592],
+      "id": "category-router-001",
+      "name": "Category Router"
+    },
+    {
+      "parameters": {
+        "collection": "three_principles",
+        "options": {},
+        "query": "={\"category\": \"brand_guidelines\"}"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [-608, 784],
+      "id": "6d8c02b7-4083-4915-aeec-9ed6cada1cb2",
+      "name": "MongoDB - Brand Guidelines",
+      "credentials": {
+        "mongoDb": {
+          "id": "YOUR_MONGODB_CREDENTIALS_ID",
+          "name": "tools system"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "collection": "three_principles",
+        "options": { "limit": 10 },
+        "query": "={\"category\": \"writing_guides\"}"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [-608, 1104],
+      "id": "e9ee0082-7d79-446a-bddc-88a18ca7e11b",
+      "name": "MongoDB - Writing Guide",
+      "credentials": {
+        "mongoDb": {
+          "id": "YOUR_MONGODB_CREDENTIALS_ID",
+          "name": "tools system"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "collection": "three_principles",
+        "options": { "limit": 10 },
+        "query": "={\"subcategory\": \"8_point_criteria\"}"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [-608, 944],
+      "id": "3ada9bc0-228e-4e82-bb84-5cada4fbdba0",
+      "name": "MongoDB - 8 Point Criteria",
+      "credentials": {
+        "mongoDb": {
+          "id": "YOUR_MONGODB_CREDENTIALS_ID",
+          "name": "tools system"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "collection": "tool_example",
+        "options": { "limit": 1 },
+        "query": "={ \"passed_qa\": true }"
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [-592, 1280],
+      "id": "e2fae6f8-8793-4e6f-88be-7d960cf41e04",
+      "name": "MongoDB - Tool Example",
+      "credentials": {
+        "mongoDb": {
+          "id": "YOUR_MONGODB_CREDENTIALS_ID",
+          "name": "tools system"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all context for AI agent INCLUDING category-specific prompts\nconst input = $('Category Router').first().json;\nconst brand = $('MongoDB - Brand Guidelines').first().json;\nconst writing = $('MongoDB - Writing Guide').first().json;\nconst criteria = $('MongoDB - 8 Point Criteria').first().json;\n\n// Fetch example tool\nlet example = '';\ntry {\n  const exampleDoc = $('MongoDB - Tool Example').first().json;\n  example = exampleDoc?.markdown || '';\n} catch (e) {\n  example = '';\n}\n\nreturn [{\n  json: {\n    ...input,\n    context: {\n      brand_guidelines: brand?.content || '',\n      writing_guide: writing?.content || '',\n      eight_point_criteria: criteria?.content || '',\n      example_tool: example,\n      // Category-specific prompt additions\n      category_prompt: input.prompt_additions || ''\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-304, 1280],
+      "id": "36be161f-86f7-47b6-b0db-ff1aa4bdb87e",
+      "name": "Merge Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.context.example_tool ? '## REFERENCE EXAMPLE (Score: 98/100)\\n\\nStudy this structure and match its quality:\\n\\n' + $json.context.example_tool + '\\n\\n---\\n\\n' : '' }}## Tool Request\n\n{{ $json.source }}\n\n## Category\n{{ $json.category_config?.name || 'B2B Service' }}\n\n{{ $json.context.category_prompt }}\n\n## Brand Guidelines\n{{ $json.context.brand_guidelines || 'Use Fast Track brand: bold, direct, action-oriented.' }}\n\n## Writing Guide\n{{ $json.context.writing_guide || 'No hedge words. Short sentences. Action verbs.' }}\n\n## 8-Point Criteria\n{{ $json.context.eight_point_criteria || 'Force decision, zero instructions, instant feedback, gamification, clear verdicts, commitment, Fast Track DNA.' }}\n\nGenerate the complete tool specification in Markdown format. Follow the EXACT structure from the reference example above. Ensure ALL 8 criteria are satisfied.\n\nIMPORTANT: This is a {{ $json.category_config?.name || 'B2B Service' }} tool. Apply the category-specific requirements above.",
+        "options": {
+          "systemMessage": "You are a Fast Track Tool Architect. You create world-class decision-making tools for elite CEOs (YPO-level, €5M-€500M companies).\n\n## YOUR OUTPUT FORMAT\n\nYou MUST output a complete tool specification in Markdown format. Follow this EXACT structure:\n\n===TOOL_META===\ntool_name: [2-4 words, action-oriented name]\ntool_slug: [lowercase-with-dashes]\ndecision: [The ONE specific decision this tool forces]\ntagline: [Max 8 words, brutal and direct]\nestimated_time: [X minutes - always 3-5 min]\n===END_META===\n\n===COVER===\n# [TOOL NAME IN CAPS]\n\n[Tagline]\n\n[One sentence: What you'll walk away with]\n===END_COVER===\n\n===CONTEXT===\n## Why This Matters\n\n[Paragraph 1: The pain. What happens if they DON'T make this decision? Be brutal.]\n\n[Paragraph 2: The promise. What this tool will reveal. Be specific.]\n===END_CONTEXT===\n\n===DIAGNOSTIC:1===\n## [Section Title - Action Verb + 2-3 words]\n\n**The Question:** [What are we really trying to figure out?]\n\n### INPUT:1.1\n- id: [snake_case_id]\n- label: [Clear, jargon-free label - max 60 chars]\n- type: slider | select | number | matrix | zones\n- required: true\n\n### FEEDBACK:1.1\n**Instant feedback shown as user interacts:**\n\n- IF value <= 30%:\n  - indicator: red\n  - message: \"[Brutal truth about what this means]\"\n  - insight: \"[Pattern this reveals about their situation]\"\n\n- IF value 31-70%:\n  - indicator: yellow\n  - message: \"[Direct observation]\"\n  - insight: \"[What to pay attention to]\"\n\n- IF value > 70%:\n  - indicator: green\n  - message: \"[Validation with a challenge]\"\n  - insight: \"[What this strength means]\"\n\n### INPUT:1.2\n[Continue with more inputs...]\n\n===END_DIAGNOSTIC===\n\n===DIAGNOSTIC:2===\n[Same structure as DIAGNOSTIC:1]\n===END_DIAGNOSTIC===\n\n===COMMITMENT===\n## Your Commitment\n\n**The Decision:**\n[What specific YES/NO or action must they commit to?]\n\n**Commitment Template:**\n\"I will [ACTION] by [DATE] because my [diagnostic result] shows [INSIGHT].\"\n===END_COMMITMENT===\n\n===VERDICTS===\n## The Verdict\n\n### SCORE 0-35: [VERDICT NAME - 2 words max]\n- color: #FF6B6B\n- headline: \"[Brutal one-liner]\"\n- explanation: \"[2-3 sentences. What this score means.]\"\n- primary_action: \"[ONE specific thing to do. Verb first. Include timeframe.]\"\n\n### SCORE 36-65: [VERDICT NAME]\n- color: #FFF469\n- headline: \"[Direct observation]\"\n- explanation: \"[2-3 sentences]\"\n- primary_action: \"[ONE specific thing]\"\n\n### SCORE 66-100: [VERDICT NAME]\n- color: #4ECDC4\n- headline: \"[Validation with next challenge]\"\n- explanation: \"[2-3 sentences. Don't let them get complacent.]\"\n- primary_action: \"[The NEXT level challenge]\"\n===END_VERDICTS===\n\n===SCORING===\n## Score Calculation\n\n### Weights:\n- input_1_1: 3\n- input_1_2: 2\n- input_2_1: 3\n[etc...]\n\n### Formula:\n[Plain English description of how inputs combine]\n===END_SCORING===\n\n## THE 8-POINT CRITERIA (You MUST satisfy ALL)\n\n1. **Forces concrete decision** - Tool ends with YES/NO or specific commitment\n2. **Zero instructions needed** - Labels are self-explanatory\n3. **Easy first steps** - Step 1 has simplest inputs\n4. **Feedback on each input** - Every input has LOW/MID/HIGH feedback\n5. **Gamification** - Progress feels rewarding\n6. **Crystal clear results** - Verdict + specific action\n7. **Public commitment** - Sharing mechanism required\n8. **Fast Track DNA** - Brutal honesty, action verbs, no corporate speak\n\n## FORBIDDEN WORDS\nmight, could, perhaps, maybe, possibly, sometimes, often, generally, typically, probably, utilize, leverage, synergy, optimization, stakeholder, bandwidth, paradigm, deliverable, actionable, scalable"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [448, 640],
+      "id": "a2aeddf2-0869-4d83-b342-472b0463fd24",
+      "name": "Tool Architect Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-pro-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [384, 864],
+      "id": "0fac7084-3389-404b-9606-7de38a7d4041",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIALS_ID",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI-generated Markdown into sections\nconst input = $('Merge Context').first().json;\nconst markdown = $('Tool Architect Agent').first().json.output;\n\n// Extract metadata\nconst metaMatch = markdown.match(/===TOOL_META===([\\s\\S]*?)===END_META===/);\nlet meta = {};\nif (metaMatch) {\n  metaMatch[1].split('\\n').forEach(line => {\n    const [key, ...rest] = line.split(':');\n    if (key && rest.length) {\n      meta[key.trim()] = rest.join(':').trim();\n    }\n  });\n}\n\n// Extract each section\nconst sections = {};\nconst sectionTypes = ['COVER', 'CONTEXT', 'DIAGNOSTIC:1', 'DIAGNOSTIC:2', 'DIAGNOSTIC:3', 'COMMITMENT', 'VERDICTS', 'SCORING'];\n\nsectionTypes.forEach(type => {\n  const regex = new RegExp(`===${type}===([\\\\s\\\\S]*?)===END_${type.split(':')[0]}===`);\n  const match = markdown.match(regex);\n  if (match) {\n    const key = type.toLowerCase().replace(':', '_');\n    sections[key] = match[1].trim();\n  }\n});\n\n// Parse inputs and feedback\nconst inputs = {};\nconst feedback = {};\nconst inputRegex = /### INPUT:(\\d+\\.\\d+)([\\s\\S]*?)(?=### INPUT:|### FEEDBACK:|===END)/g;\nconst feedbackRegex = /### FEEDBACK:(\\d+\\.\\d+)([\\s\\S]*?)(?=### INPUT:|### FEEDBACK:|===END)/g;\n\nlet inputMatch;\nwhile ((inputMatch = inputRegex.exec(markdown)) !== null) {\n  const id = `input_${inputMatch[1].replace('.', '_')}`;\n  inputs[id] = parseInputConfig(inputMatch[2]);\n}\n\nlet feedbackMatch;\nwhile ((feedbackMatch = feedbackRegex.exec(markdown)) !== null) {\n  const id = `input_${feedbackMatch[1].replace('.', '_')}`;\n  feedback[id] = parseFeedbackConfig(feedbackMatch[2]);\n}\n\n// Parse verdicts\nconst verdicts = parseVerdicts(sections.verdicts || '');\n\n// Parse scoring weights\nconst scoringWeights = parseScoringWeights(sections.scoring || '');\n\nfunction parseInputConfig(text) {\n  const config = {};\n  const lines = text.split('\\n');\n  lines.forEach(line => {\n    const match = line.match(/^- (\\w+): (.+)$/);\n    if (match) {\n      let value = match[2].trim();\n      if (value.startsWith('[') || value.startsWith('{')) {\n        try { value = JSON.parse(value); } catch (e) {}\n      }\n      config[match[1]] = value;\n    }\n  });\n  return config;\n}\n\nfunction parseFeedbackConfig(text) {\n  const config = { low: {}, mid: {}, high: {} };\n  const sections = text.split(/- IF value/);\n  sections.forEach(section => {\n    if (section.includes('<= 30%')) {\n      config.low = extractFeedbackValues(section);\n    } else if (section.includes('31-70%')) {\n      config.mid = extractFeedbackValues(section);\n    } else if (section.includes('> 70%')) {\n      config.high = extractFeedbackValues(section);\n    }\n  });\n  return config;\n}\n\nfunction extractFeedbackValues(text) {\n  const result = {};\n  const messageMatch = text.match(/message: \"([^\"]+)\"/);\n  const insightMatch = text.match(/insight: \"([^\"]+)\"/);\n  if (messageMatch) result.message = messageMatch[1];\n  if (insightMatch) result.insight = insightMatch[1];\n  return result;\n}\n\nfunction parseVerdicts(text) {\n  const verdicts = [];\n  const verdictRegex = /### SCORE (\\d+)-(\\d+): ([^\\n]+)([\\s\\S]*?)(?=### SCORE|$)/g;\n  let match;\n  while ((match = verdictRegex.exec(text)) !== null) {\n    const verdict = {\n      min: parseInt(match[1]),\n      max: parseInt(match[2]),\n      name: match[3].trim(),\n      color: '',\n      headline: '',\n      explanation: '',\n      primary_action: ''\n    };\n    const content = match[4];\n    const colorMatch = content.match(/color: (#[A-Fa-f0-9]+)/);\n    const headlineMatch = content.match(/headline: \"([^\"]+)\"/);\n    const explanationMatch = content.match(/explanation: \"([^\"]+)\"/);\n    const primaryMatch = content.match(/primary_action: \"([^\"]+)\"/);\n\n    if (colorMatch) verdict.color = colorMatch[1];\n    if (headlineMatch) verdict.headline = headlineMatch[1];\n    if (explanationMatch) verdict.explanation = explanationMatch[1];\n    if (primaryMatch) verdict.primary_action = primaryMatch[1];\n    verdicts.push(verdict);\n  }\n  return verdicts;\n}\n\nfunction parseScoringWeights(text) {\n  const weights = {};\n  const weightRegex = /- (input_\\d+_\\d+): (\\d+)/g;\n  let match;\n  while ((match = weightRegex.exec(text)) !== null) {\n    weights[match[1]] = parseInt(match[2]);\n  }\n  return weights;\n}\n\nreturn [{\n  json: {\n    job_id: input.job_id,\n    attempt: input.attempt,\n    max_attempts: input.max_attempts,\n    callback_url: input.callback_url,\n    category: input.category,\n    category_config: input.category_config,\n    tool_name: meta.tool_name || 'Decision Tool',\n    tool_slug: meta.tool_slug || 'decision-tool',\n    decision: meta.decision || '',\n    tagline: meta.tagline || '',\n    estimated_time: meta.estimated_time || '5 minutes',\n    sections,\n    inputs,\n    feedback,\n    verdicts,\n    scoring_weights: scoringWeights,\n    raw_markdown: markdown\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [752, 640],
+      "id": "78b4daf0-7923-4362-9a78-c3fe97ee1475",
+      "name": "Parse Markdown Sections"
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $json.sections.cover || '' }}  ---SECTION_BREAK---  {{ $json.sections.context || '' }}  ---SECTION_BREAK---  {{ $json.sections.diagnostic_1 || '' }}  ---SECTION_BREAK---  {{ $json.sections.diagnostic_2 || '' }}  ---SECTION_BREAK---  {{ $json.sections.commitment || '' }}  ---SECTION_BREAK---  {{ $json.sections.verdicts || '' }}",
+        "destinationKey": "html_fragments",
+        "options": {
+          "emoji": true,
+          "tasklists": true,
+          "simpleLineBreaks": true,
+          "strikethrough": true,
+          "tables": true
+        }
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [960, 640],
+      "id": "befb32b8-f58a-4cc5-ab24-2aa68afac086",
+      "name": "Markdown to HTML"
+    },
+    {
+      "parameters": {
+        "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>{{ $json.tool_name }} | Fast Track</title>\n  <style>\n    :root {\n      --ft-black: #000000;\n      --ft-white: #FFFFFF;\n      --ft-grey: #B2B2B2;\n      --ft-grey-dark: #1A1A1A;\n      --ft-yellow: #FFF469;\n      --ft-red: #FF6B6B;\n      --ft-green: #4ECDC4;\n    }\n    * { box-sizing: border-box; margin: 0; padding: 0; }\n    body { font-family: 'Inter', sans-serif; background: var(--ft-black); color: var(--ft-white); line-height: 1.6; }\n    .page { display: none; min-height: 100vh; padding: 2rem; }\n    .page.active { display: flex; flex-direction: column; }\n    .cover { justify-content: center; align-items: center; text-align: center; }\n    .cover h1 { font-size: clamp(2rem, 8vw, 4rem); text-transform: uppercase; margin-bottom: 1rem; }\n    .btn { padding: 1rem 2rem; border: 3px solid var(--ft-white); background: transparent; color: var(--ft-white); cursor: pointer; text-transform: uppercase; }\n    .btn-primary { background: var(--ft-yellow); border-color: var(--ft-yellow); color: var(--ft-black); }\n    .progress-bar { position: fixed; top: 0; left: 0; height: 4px; background: var(--ft-yellow); width: 0%; transition: width 0.3s; }\n    .container { max-width: 800px; margin: 0 auto; width: 100%; }\n    .input-group { margin-bottom: 2rem; }\n    .input-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ft-grey); margin-bottom: 0.5rem; display: block; }\n    .input-field { width: 100%; padding: 1rem; background: transparent; border: 3px solid var(--ft-white); color: var(--ft-white); font-size: 1rem; }\n    .feedback { padding: 1rem; margin-top: 0.5rem; border-left: 4px solid; opacity: 0; transition: opacity 0.3s; }\n    .feedback.show { opacity: 1; }\n    .feedback.red { border-color: var(--ft-red); background: rgba(255,107,107,0.1); }\n    .feedback.yellow { border-color: var(--ft-yellow); background: rgba(255,244,105,0.1); }\n    .feedback.green { border-color: var(--ft-green); background: rgba(78,205,196,0.1); }\n    .score-number { font-size: 6rem; font-weight: bold; text-align: center; }\n  </style>\n</head>\n<body>\n  <div class=\"progress-bar\" id=\"progressBar\"></div>\n  <div class=\"page cover active\" id=\"cover\">\n    <span style=\"font-size: 0.75rem; text-transform: uppercase; background: var(--ft-yellow); color: var(--ft-black); padding: 4px 12px; margin-bottom: 16px;\">{{ $json.category_config?.name || 'Decision Tool' }}</span>\n    <h1>{{ $json.tool_name }}</h1>\n    <p style=\"color: var(--ft-grey); margin-bottom: 2rem;\">{{ $json.tagline }}</p>\n    <button class=\"btn btn-primary\" onclick=\"showPage('context')\">START</button>\n  </div>\n  <div class=\"page\" id=\"context\">\n    <div class=\"container\">\n      <h2>{{ $json.decision }}</h2>\n      <div id=\"contextContent\"></div>\n      <button class=\"btn btn-primary\" onclick=\"showPage('step-1')\" style=\"margin-top: 2rem;\">BEGIN</button>\n    </div>\n  </div>\n  <div class=\"page\" id=\"step-1\"><div class=\"container\"><div id=\"step1Content\"></div><button class=\"btn btn-primary\" onclick=\"showPage('step-2')\" style=\"margin-top: 2rem;\">NEXT</button></div></div>\n  <div class=\"page\" id=\"step-2\"><div class=\"container\"><div id=\"step2Content\"></div><button class=\"btn btn-primary\" onclick=\"showPage('commitment')\" style=\"margin-top: 2rem;\">NEXT</button></div></div>\n  <div class=\"page\" id=\"commitment\">\n    <div class=\"container\">\n      <h2>YOUR COMMITMENT</h2>\n      <div style=\"border: 3px solid var(--ft-yellow); padding: 2rem; margin: 2rem 0;\">\n        <label class=\"input-label\">I commit to:</label>\n        <input type=\"text\" class=\"input-field\" id=\"commitmentText\" placeholder=\"I will [ACTION] by [DATE]\">\n      </div>\n      <div style=\"margin-bottom: 2rem;\">\n        <label class=\"input-label\">Deadline</label>\n        <input type=\"date\" class=\"input-field\" id=\"commitmentDeadline\" style=\"max-width: 300px;\">\n      </div>\n      <button class=\"btn btn-primary\" onclick=\"showPage('results')\">SEAL IT</button>\n    </div>\n  </div>\n  <div class=\"page\" id=\"results\">\n    <div class=\"container\">\n      <div class=\"score-number\" id=\"scoreNumber\">--</div>\n      <div id=\"verdictName\" style=\"font-size: 2rem; text-transform: uppercase; text-align: center;\">CALCULATING</div>\n      <p id=\"verdictHeadline\" style=\"text-align: center; font-size: 1.25rem; margin: 1rem 0;\"></p>\n      <div style=\"border: 3px solid var(--ft-yellow); padding: 1.5rem; margin: 2rem 0; text-align: center;\">\n        <p style=\"font-size: 0.75rem; text-transform: uppercase; color: var(--ft-yellow);\">Your Next Move</p>\n        <p id=\"primaryActionText\" style=\"font-size: 1.25rem; font-weight: bold;\"></p>\n      </div>\n      <div style=\"display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;\">\n        <button class=\"btn\" onclick=\"resetTool()\">START OVER</button>\n        <button class=\"btn btn-primary\" onclick=\"shareWithTeam()\">SHARE</button>\n      </div>\n    </div>\n  </div>\n  <script>\n    const TOOL = {\n      name: '{{ $json.tool_name }}',\n      category: '{{ $json.category || \"b2b_service\" }}',\n      inputs: {{ JSON.stringify($json.inputs) }},\n      feedback: {{ JSON.stringify($json.feedback) }},\n      verdicts: {{ JSON.stringify($json.verdicts) }},\n      weights: {{ JSON.stringify($json.scoring_weights) }}\n    };\n    let state = { inputs: {}, currentPage: 'cover' };\n    function showPage(id) {\n      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));\n      document.getElementById(id).classList.add('active');\n      state.currentPage = id;\n      updateProgress();\n      if (id === 'results') calculateResults();\n    }\n    function updateProgress() {\n      const pages = ['cover', 'context', 'step-1', 'step-2', 'commitment', 'results'];\n      const idx = pages.indexOf(state.currentPage);\n      document.getElementById('progressBar').style.width = (idx / (pages.length - 1)) * 100 + '%';\n    }\n    function handleInput(inputId, value, max) {\n      state.inputs[inputId] = value;\n      const percent = (value / max) * 100;\n      const fb = TOOL.feedback[inputId];\n      if (!fb) return;\n      const el = document.getElementById('feedback-' + inputId);\n      if (!el) return;\n      el.classList.remove('red', 'yellow', 'green');\n      el.classList.add('show');\n      let level = percent <= 30 ? fb.low : percent <= 70 ? fb.mid : fb.high;\n      el.className = 'feedback show ' + (percent <= 30 ? 'red' : percent <= 70 ? 'yellow' : 'green');\n      el.innerHTML = '<strong>' + (level?.message || '') + '</strong>';\n    }\n    function calculateResults() {\n      let total = 0, weightSum = 0;\n      Object.keys(state.inputs).forEach(id => {\n        const weight = TOOL.weights[id] || 1;\n        const config = TOOL.inputs[id];\n        const max = config?.max || 100;\n        const percent = (state.inputs[id] / max) * 100;\n        total += percent * weight;\n        weightSum += weight;\n      });\n      const score = weightSum > 0 ? Math.round(total / weightSum) : 50;\n      const verdict = TOOL.verdicts.find(v => score >= v.min && score <= v.max) || TOOL.verdicts[1] || { name: 'RESULT', color: '#FFF469' };\n      document.getElementById('scoreNumber').textContent = score;\n      document.getElementById('scoreNumber').style.color = verdict.color;\n      document.getElementById('verdictName').textContent = verdict.name;\n      document.getElementById('verdictName').style.color = verdict.color;\n      document.getElementById('verdictHeadline').textContent = verdict.headline || '';\n      document.getElementById('primaryActionText').textContent = verdict.primary_action || '';\n    }\n    function resetTool() { state.inputs = {}; showPage('cover'); }\n    function shareWithTeam() { alert('Sharing: ' + TOOL.name + ' - Score: ' + document.getElementById('scoreNumber').textContent); }\n    document.addEventListener('DOMContentLoaded', function() {\n      const d = new Date(); d.setDate(d.getDate() + 30);\n      const deadline = document.getElementById('commitmentDeadline');\n      if (deadline) deadline.valueAsDate = d;\n    });\n  </script>\n</body>\n</html>"
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [1168, 640],
+      "id": "0552fdf4-6175-4651-a8b2-b55605ace882",
+      "name": "Build HTML Template"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge parsed data with built HTML for QA validation\nconst parsed = $('Parse Markdown Sections').first().json;\nconst html = $('Build HTML Template').first().json.html;\n\nreturn [{\n  json: {\n    ...parsed,\n    tool_html: html\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1376, 640],
+      "id": "c35d2696-6a16-4eeb-a288-6818e0d996ab",
+      "name": "Merge for QA"
+    },
+    {
+      "parameters": {
+        "jsCode": "// QA Validator - Checks 8-Point Criteria\nconst data = $input.first().json;\n\nif (!data || !data.raw_markdown) {\n  return [{ json: { passed: false, score: 0, job_id: data?.job_id || 'unknown', attempt: data?.attempt || 1, failures: ['AI output could not be parsed'], fixes: [] } }];\n}\n\nconst markdown = data.raw_markdown || '';\nconst toolName = data.tool_name || '';\nconst sections = data.sections || {};\nconst inputs = data.inputs || {};\nconst feedback = data.feedback || {};\n\nlet score = 100;\nconst checks = [];\nconst failures = [];\nconst fixes = [];\n\n// Check 1: Decision Clarity (20 pts)\nconst check1 = { name: 'Decision Clarity', points: 20, issues: [] };\nif (!toolName) { check1.points -= 10; check1.issues.push('Tool name missing'); failures.push('NO TOOL NAME'); }\nif (!sections.commitment) { check1.points -= 15; check1.issues.push('Missing COMMITMENT section'); failures.push('NO COMMITMENT'); }\nchecks.push(check1);\nscore -= (20 - check1.points);\n\n// Check 2: Zero Instructions (15 pts)\nconst check2 = { name: 'Zero Instructions', points: 15, issues: [] };\nconst jargon = ['utilize', 'leverage', 'synergy', 'optimization', 'stakeholder', 'bandwidth', 'paradigm'];\nconst foundJargon = jargon.filter(w => markdown.toLowerCase().includes(w));\nif (foundJargon.length > 0) { check2.points -= 5; check2.issues.push(`Jargon found: ${foundJargon.join(', ')}`); }\nchecks.push(check2);\nscore -= (15 - check2.points);\n\n// Check 3: Instant Feedback (20 pts)\nconst check3 = { name: 'Instant Feedback', points: 20, issues: [] };\nconst inputCount = Object.keys(inputs).length;\nconst feedbackCount = Object.keys(feedback).length;\nif (inputCount === 0) { check3.points -= 20; check3.issues.push('No inputs found'); failures.push('NO INPUTS'); }\nelse if (feedbackCount < inputCount) { check3.points -= 10; check3.issues.push(`${inputCount - feedbackCount} inputs missing feedback`); }\nchecks.push(check3);\nscore -= (20 - check3.points);\n\n// Check 4: Has Verdicts (15 pts)\nconst check4 = { name: 'Result Verdicts', points: 15, issues: [] };\nconst verdicts = data.verdicts || [];\nif (verdicts.length < 3) { check4.points -= 15; check4.issues.push(`Only ${verdicts.length} verdict ranges`); failures.push('INCOMPLETE VERDICTS'); }\nchecks.push(check4);\nscore -= (15 - check4.points);\n\n// Check 5: Has Scoring Logic (15 pts)\nconst check5 = { name: 'Scoring Logic', points: 15, issues: [] };\nif (!sections.scoring) { check5.points -= 15; check5.issues.push('Missing SCORING section'); failures.push('NO SCORING'); }\nchecks.push(check5);\nscore -= (15 - check5.points);\n\n// Check 6: Fast Track DNA (15 pts)\nconst check6 = { name: 'Fast Track DNA', points: 15, issues: [] };\nconst hedgeWords = ['might', 'could', 'perhaps', 'maybe', 'possibly', 'sometimes'];\nconst foundHedge = hedgeWords.filter(w => markdown.toLowerCase().includes(w));\nif (foundHedge.length > 0) { check6.points -= (foundHedge.length * 3); check6.issues.push(`Hedge words: ${foundHedge.join(', ')}`); }\nchecks.push(check6);\nscore -= (15 - check6.points);\n\nscore = Math.max(0, Math.min(100, score));\nconst passed = score >= 70 && failures.length === 0;\n\nreturn [{\n  json: {\n    passed,\n    score,\n    qa_passed: passed,\n    qa_score: score,\n    job_id: data.job_id,\n    attempt: data.attempt || 1,\n    max_attempts: data.max_attempts || 3,\n    tool_name: toolName,\n    tool_slug: data.tool_slug,\n    category: data.category,\n    category_config: data.category_config,\n    decision: data.decision,\n    tagline: data.tagline,\n    checks,\n    failures,\n    fixes,\n    raw_markdown: markdown,\n    sections,\n    inputs,\n    feedback,\n    verdicts: data.verdicts || [],\n    tool_html: data.tool_html,\n    callback_url: data.callback_url,\n    qa_report: { score, passed_checks: checks.filter(c => c.points === c.name.length).map(c => c.name), failed_checks: failures, recommendations: fixes.map(f => f.suggestion) }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1648, 640],
+      "id": "cdec58d3-a6b1-47e1-9df0-ed650e3fda26",
+      "name": "QA Validator"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            { "id": "qa-pass", "leftValue": "={{ $json.qa_passed }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1872, 640],
+      "id": "cbee3950-fc51-439d-a416-0c8753acb1f6",
+      "name": "QA Passed?"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "collection": "tools",
+        "fields": "={\n  \"tool_id\": \"{{ $json.job_id }}\",\n  \"tool_name\": \"{{ $json.tool_name }}\",\n  \"tool_slug\": \"{{ $json.tool_slug }}\",\n  \"category\": \"{{ $json.category }}\",\n  \"tool_html\": \"{{ $json.tool_html }}\",\n  \"decision\": \"{{ $json.decision }}\",\n  \"tagline\": \"{{ $json.tagline }}\",\n  \"qa_score\": {{ $json.qa_score }},\n  \"qa_report\": {{ JSON.stringify($json.qa_report) }},\n  \"revision_count\": {{ $json.attempt }},\n  \"created_at\": \"{{ new Date().toISOString() }}\",\n  \"status\": \"active\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1.2,
+      "position": [2240, 272],
+      "id": "3905f5cf-0281-432a-bb2b-2a5fee127dd6",
+      "name": "Insert to MongoDB",
+      "credentials": {
+        "mongoDb": {
+          "id": "YOUR_MONGODB_CREDENTIALS_ID",
+          "name": "tools system"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $env.GITHUB_OWNER || 'YOUR_GITHUB_ORG' }}/{{ $env.GITHUB_REPO || 'generated-tools' }}/contents/tools/{{ $json.tool_slug }}/index.html",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github.v3+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"Add tool: {{ $json.tool_name }}\\n\\nCategory: {{ $json.category }}\\nQA Score: {{ $json.qa_score }}\",\n  \"content\": \"{{ Buffer.from($json.tool_html || '').toString('base64') }}\",\n  \"branch\": \"main\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 272],
+      "id": "github-push-html",
+      "name": "GitHub Push HTML",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GITHUB_CREDENTIALS_ID",
+          "name": "GitHub Token"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $env.GITHUB_OWNER || 'YOUR_GITHUB_ORG' }}/{{ $env.GITHUB_REPO || 'generated-tools' }}/contents/tools/{{ $('Insert to MongoDB').item.json.tool_slug }}/config.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github.v3+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"Add config: {{ $('Insert to MongoDB').item.json.tool_name }}\",\n  \"content\": \"{{ Buffer.from(JSON.stringify({\n    tool_id: $('Insert to MongoDB').item.json.job_id,\n    tool_name: $('Insert to MongoDB').item.json.tool_name,\n    tool_slug: $('Insert to MongoDB').item.json.tool_slug,\n    category: $('Insert to MongoDB').item.json.category,\n    decision: $('Insert to MongoDB').item.json.decision,\n    tagline: $('Insert to MongoDB').item.json.tagline,\n    qa_score: $('Insert to MongoDB').item.json.qa_score,\n    created_at: new Date().toISOString()\n  }, null, 2)).toString('base64') }}\",\n  \"branch\": \"main\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, 272],
+      "id": "github-push-config",
+      "name": "GitHub Push Config",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GITHUB_CREDENTIALS_ID",
+          "name": "GitHub Token"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"job_id\": \"{{ $('Insert to MongoDB').item.json.job_id }}\",\n  \"tool_name\": \"{{ $('Insert to MongoDB').item.json.tool_name }}\",\n  \"tool_slug\": \"{{ $('Insert to MongoDB').item.json.tool_slug }}\",\n  \"category\": \"{{ $('Insert to MongoDB').item.json.category }}\",\n  \"tool_html_base64\": \"{{ Buffer.from($('Insert to MongoDB').item.json.tool_html || '').toString('base64') }}\",\n  \"qa_report\": {{ JSON.stringify($('Insert to MongoDB').item.json.qa_report) }},\n  \"revision_count\": {{ $('Insert to MongoDB').item.json.attempt }},\n  \"github_pushed\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [2848, 272],
+      "id": "c2a1d17c-71db-4df9-bccd-74dd8ebddb30",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Retry - Build context for Revision Agent\nconst qa = $input.first().json;\n\nlet html = '';\ntry { html = $('Build HTML Template').first().json.html || ''; } catch (e) { html = qa.tool_html || ''; }\n\nlet example = '';\ntry { example = $('MongoDB - Tool Example').first().json.markdown || ''; } catch (e) { example = ''; }\n\nif (qa.attempt >= qa.max_attempts) {\n  return [{ json: { abort: true, abort_reason: `Tool failed QA after ${qa.max_attempts} attempts`, job_id: qa.job_id, final_score: qa.score, tool_name: qa.tool_name, callback_url: qa.callback_url, html: html } }];\n}\n\nlet instructions = `**Score: ${qa.score}/100** (Need 70+ to pass)\\n\\n`;\nif (qa.failures && qa.failures.length > 0) {\n  instructions += `### CRITICAL FAILURES\\n`;\n  qa.failures.forEach((f, i) => { instructions += `${i + 1}. ${f}\\n`; });\n}\nif (qa.fixes && qa.fixes.length > 0) {\n  instructions += `\\n### REQUIRED FIXES\\n`;\n  qa.fixes.forEach((fix, i) => { instructions += `${i + 1}. ${fix.location}: ${fix.suggestion}\\n`; });\n}\n\nreturn [{ json: { job_id: qa.job_id, attempt: qa.attempt + 1, max_attempts: qa.max_attempts, revision_instructions: instructions, html: html, example_tool: example, callback_url: qa.callback_url, previous_score: qa.score, tool_name: qa.tool_name, category: qa.category, category_config: qa.category_config } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 900],
+      "id": "11c9eb5d-d06c-4020-aab5-906a32c2e442",
+      "name": "Prepare Retry"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## QA REVISION REQUEST\\n\\n### QA FEEDBACK (MUST FIX ALL)\\n{{ $json.revision_instructions }}\\n\\n### CURRENT TOOL HTML (Reference)\\n{{ $json.html }}\\n\\n{{ $json.example_tool ? '\\n\\n### REFERENCE EXAMPLE\\n' + $json.example_tool : '' }}\\n\\nOutput the COMPLETE REVISED tool in markdown format. Fix ALL issues listed above.",
+        "options": {
+          "systemMessage": "You are a Fast Track Tool Revision Specialist. Fix tools that failed QA. Output COMPLETE revised markdown using the exact structure with ===TOOL_META===, ===COVER===, ===CONTEXT===, ===DIAGNOSTIC:1===, ===VERDICTS===, ===SCORING===, ===COMMITMENT=== sections."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [2280, 900],
+      "id": "ef0e55b9-06c3-4f7c-bced-c4b164b9841f",
+      "name": "Revision Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-pro-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [2220, 1120],
+      "id": "b37c7cb1-8de1-402e-b074-2d9dc0ab4237",
+      "name": "Google Gemini Chat Model (Revision)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIALS_ID",
+          "name": "Google Gemini API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "tool-factory": {
+      "main": [[{ "node": "Parse & Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "Parse & Normalize Input": {
+      "main": [[{ "node": "Category Router", "type": "main", "index": 0 }]]
+    },
+    "Category Router": {
+      "main": [
+        [
+          { "node": "MongoDB - Brand Guidelines", "type": "main", "index": 0 },
+          { "node": "MongoDB - Writing Guide", "type": "main", "index": 0 },
+          { "node": "MongoDB - 8 Point Criteria", "type": "main", "index": 0 },
+          { "node": "MongoDB - Tool Example", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "MongoDB - Brand Guidelines": {
+      "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]]
+    },
+    "MongoDB - Writing Guide": {
+      "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]]
+    },
+    "MongoDB - 8 Point Criteria": {
+      "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]]
+    },
+    "MongoDB - Tool Example": {
+      "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]]
+    },
+    "Merge Context": {
+      "main": [[{ "node": "Tool Architect Agent", "type": "main", "index": 0 }]]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [[{ "node": "Tool Architect Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Tool Architect Agent": {
+      "main": [[{ "node": "Parse Markdown Sections", "type": "main", "index": 0 }]]
+    },
+    "Parse Markdown Sections": {
+      "main": [[{ "node": "Markdown to HTML", "type": "main", "index": 0 }]]
+    },
+    "Markdown to HTML": {
+      "main": [[{ "node": "Build HTML Template", "type": "main", "index": 0 }]]
+    },
+    "Build HTML Template": {
+      "main": [[{ "node": "Merge for QA", "type": "main", "index": 0 }]]
+    },
+    "Merge for QA": {
+      "main": [[{ "node": "QA Validator", "type": "main", "index": 0 }]]
+    },
+    "QA Validator": {
+      "main": [[{ "node": "QA Passed?", "type": "main", "index": 0 }]]
+    },
+    "QA Passed?": {
+      "main": [
+        [{ "node": "Insert to MongoDB", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Retry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Insert to MongoDB": {
+      "main": [[{ "node": "GitHub Push HTML", "type": "main", "index": 0 }]]
+    },
+    "GitHub Push HTML": {
+      "main": [[{ "node": "GitHub Push Config", "type": "main", "index": 0 }]]
+    },
+    "GitHub Push Config": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Prepare Retry": {
+      "main": [[{ "node": "Revision Agent", "type": "main", "index": 0 }]]
+    },
+    "Google Gemini Chat Model (Revision)": {
+      "ai_languageModel": [[{ "node": "Revision Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Revision Agent": {
+      "main": [[{ "node": "Parse Markdown Sections", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
