@@ -23,6 +23,7 @@ export function createInitialState(): QuestionnaireState {
   return {
     currentStep: 1,
     answers: {
+      category: 'b2b_service', // Default category
       decision: '',
       teaching: '',
       inputTypes: [],
@@ -84,7 +85,7 @@ export function resetState(): QuestionnaireState {
  * Go to specific step
  */
 export function goToStep(step: number): QuestionnaireState {
-  if (step < 1 || step > 5) {
+  if (step < 1 || step > 6) {
     console.warn('[Questionnaire] Invalid step:', step);
     return currentState;
   }
@@ -96,7 +97,7 @@ export function goToStep(step: number): QuestionnaireState {
  * Go to next step
  */
 export function nextStep(): QuestionnaireState {
-  if (currentState.currentStep >= 5) {
+  if (currentState.currentStep >= 6) {
     return currentState;
   }
 

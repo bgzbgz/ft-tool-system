@@ -65,6 +65,31 @@ export interface Configuration {
 }
 
 /**
+ * Optional configuration for extended features
+ * These are not required for basic operation
+ */
+export interface ExtendedConfiguration {
+  // LearnWorlds Integration
+  LEARNWORLDS_SCHOOL_ID?: string;
+  LEARNWORLDS_API_KEY?: string;
+  LEARNWORLDS_CLIENT_ID?: string;
+  LEARNWORLDS_CLIENT_SECRET?: string;
+  LEARNWORLDS_SSO_SECRET?: string;
+  LEARNWORLDS_BASE_URL?: string;
+
+  // GitHub Integration
+  GITHUB_TOKEN?: string;
+  GITHUB_OWNER?: string;
+  GITHUB_REPO?: string;
+  GITHUB_BRANCH?: string;
+
+  // Base URL for callbacks
+  BASE_URL?: string;
+  CALLBACK_URL?: string;
+  REVISION_WEBHOOK_URL?: string;
+}
+
+/**
  * Configuration field names (for type safety)
  */
 export type ConfigurationField = keyof Configuration;

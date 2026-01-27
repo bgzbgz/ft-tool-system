@@ -4,16 +4,24 @@
  * Per spec.md FR-003 through FR-006
  */
 
-import { QuestionConfig, INPUT_TYPE_OPTIONS } from './types';
+import { QuestionConfig, INPUT_TYPE_OPTIONS, TOOL_CATEGORY_OPTIONS } from './types';
 
 /**
  * Question configuration array
- * 4 questions with id, step, question text, inputType, placeholder, options, maxLength
+ * 5 questions: category, decision, teaching, inputTypes, scoringCriteria + review
  */
 export const QUESTIONS: QuestionConfig[] = [
   {
-    id: 'decision',
+    id: 'category',
     step: 1,
+    question: 'What type of tool are you creating?',
+    inputType: 'category', // New input type for category selection
+    options: TOOL_CATEGORY_OPTIONS as any,
+    maxLength: 0
+  },
+  {
+    id: 'decision',
+    step: 2,
     question: 'What decision should the user make by the end of this tool?',
     inputType: 'text',
     placeholder: 'e.g., Should you hire a new team member?',
@@ -21,7 +29,7 @@ export const QUESTIONS: QuestionConfig[] = [
   },
   {
     id: 'teaching',
-    step: 2,
+    step: 3,
     question: 'What is the one thing this tool will teach them?',
     inputType: 'text',
     placeholder: 'e.g., How to objectively evaluate team capacity',
@@ -29,7 +37,7 @@ export const QUESTIONS: QuestionConfig[] = [
   },
   {
     id: 'inputTypes',
-    step: 3,
+    step: 4,
     question: 'What inputs should the user provide?',
     inputType: 'multiselect',
     options: INPUT_TYPE_OPTIONS,
@@ -37,7 +45,7 @@ export const QUESTIONS: QuestionConfig[] = [
   },
   {
     id: 'scoringCriteria',
-    step: 4,
+    step: 5,
     question: 'What makes someone score HIGH vs LOW?',
     inputType: 'text',
     placeholder: 'e.g., High overtime and missed deadlines = hire now',
@@ -46,14 +54,14 @@ export const QUESTIONS: QuestionConfig[] = [
 ];
 
 /**
- * Total number of steps (4 questions + 1 review)
+ * Total number of steps (5 questions + 1 review)
  */
-export const TOTAL_STEPS = 5;
+export const TOTAL_STEPS = 6;
 
 /**
  * Review step number
  */
-export const REVIEW_STEP = 5;
+export const REVIEW_STEP = 6;
 
 /**
  * Get question config by step number

@@ -1,0 +1,285 @@
+name: Setup Tool Database
+
+on:
+  # Trigger when a new tool is pushed
+  push:
+    paths:
+      - 'tools/*/index.html'
+      - 'tools/*/database.yml'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      tool_slug:
+        description: 'Tool slug (directory name)'
+        required: true
+        type: string
+      tool_id:
+        description: 'Tool ID'
+        required: false
+        type: string
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_ORG_ID: ${{ secrets.SUPABASE_ORG_ID }}
+
+jobs:
+  detect-new-tools:
+    runs-on: ubuntu-latest
+    outputs:
+      tools: ${{ steps.detect.outputs.tools }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect new/changed tools
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual trigger - use input
+            echo "tools=[\"${{ inputs.tool_slug }}\"]" >> $GITHUB_OUTPUT
+          else
+            # Push trigger - detect from changed files
+            TOOLS=$(git diff --name-only HEAD~1 HEAD | grep '^tools/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Show detected tools
+        run: |
+          echo "Tools to process: ${{ steps.detect.outputs.tools }}"
+
+  setup-database:
+    needs: detect-new-tools
+    runs-on: ubuntu-latest
+    if: needs.detect-new-tools.outputs.tools != '[]' && needs.detect-new-tools.outputs.tools != ''
+    strategy:
+      matrix:
+        tool: ${{ fromJson(needs.detect-new-tools.outputs.tools) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Read tool config
+        id: config
+        run: |
+          if [ -f "tools/${{ matrix.tool }}/config.json" ]; then
+            TOOL_NAME=$(jq -r '.tool_name' tools/${{ matrix.tool }}/config.json)
+            TOOL_ID=$(jq -r '.tool_id' tools/${{ matrix.tool }}/config.json)
+            CATEGORY=$(jq -r '.category' tools/${{ matrix.tool }}/config.json)
+
+            echo "tool_name=$TOOL_NAME" >> $GITHUB_OUTPUT
+            echo "tool_id=$TOOL_ID" >> $GITHUB_OUTPUT
+            echo "category=$CATEGORY" >> $GITHUB_OUTPUT
+            echo "has_config=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_config=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Parse database config
+        id: db_config
+        if: steps.config.outputs.has_config == 'true'
+        run: |
+          if [ -f "tools/${{ matrix.tool }}/database.yml" ]; then
+            # Install yq for YAML parsing
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+
+            DB_TYPE=$(yq '.database.type' tools/${{ matrix.tool }}/database.yml)
+            DB_NAME=$(yq '.database.name' tools/${{ matrix.tool }}/database.yml)
+
+            echo "db_type=$DB_TYPE" >> $GITHUB_OUTPUT
+            echo "db_name=$DB_NAME" >> $GITHUB_OUTPUT
+            echo "has_db_config=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_db_config=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Option 1: SQLite Database (stored in repo)
+      - name: Create SQLite Database
+        if: steps.db_config.outputs.db_type == 'sqlite'
+        run: |
+          mkdir -p databases
+          DB_PATH="databases/${{ matrix.tool }}.db"
+
+          # Create database with schema
+          sqlite3 "$DB_PATH" <<'EOF'
+          CREATE TABLE IF NOT EXISTS responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_id TEXT,
+            inputs JSON,
+            score INTEGER,
+            verdict TEXT,
+            commitment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS commitments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            response_id INTEGER REFERENCES responses(id),
+            commitment_text TEXT,
+            deadline DATE,
+            accountability_partner TEXT,
+            shared_with JSON,
+            status TEXT DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_responses_session ON responses(session_id);
+          CREATE INDEX IF NOT EXISTS idx_responses_user ON responses(user_id);
+          CREATE INDEX IF NOT EXISTS idx_commitments_response ON commitments(response_id);
+          EOF
+
+          echo "✅ SQLite database created: $DB_PATH"
+
+      - name: Commit SQLite database
+        if: steps.db_config.outputs.db_type == 'sqlite'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add databases/
+          git diff --staged --quiet || git commit -m "Add database for tool: ${{ matrix.tool }}"
+          git push || echo "Nothing to push"
+
+      # Option 2: Supabase Database (cloud)
+      - name: Create Supabase Project
+        if: steps.db_config.outputs.db_type == 'supabase' && env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          # Create new Supabase project via API
+          PROJECT_NAME="ft-${{ matrix.tool }}"
+
+          # Note: This is a simplified example. In production, you'd use the full Supabase Management API
+          curl -X POST 'https://api.supabase.com/v1/projects' \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"$PROJECT_NAME\",
+              \"organization_id\": \"$SUPABASE_ORG_ID\",
+              \"plan\": \"free\",
+              \"region\": \"us-east-1\"
+            }" > supabase_response.json
+
+          # Extract project details
+          PROJECT_REF=$(jq -r '.id' supabase_response.json)
+          API_URL=$(jq -r '.api_url' supabase_response.json)
+
+          echo "PROJECT_REF=$PROJECT_REF" >> $GITHUB_ENV
+          echo "API_URL=$API_URL" >> $GITHUB_ENV
+
+          echo "✅ Supabase project created: $PROJECT_NAME"
+
+      - name: Setup Supabase Tables
+        if: steps.db_config.outputs.db_type == 'supabase' && env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          # Run SQL to create tables
+          curl -X POST "$API_URL/rest/v1/rpc/exec_sql" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "CREATE TABLE IF NOT EXISTS responses (id SERIAL PRIMARY KEY, session_id TEXT NOT NULL, user_id TEXT, inputs JSONB, score INTEGER, verdict TEXT, commitment TEXT, created_at TIMESTAMPTZ DEFAULT NOW()); CREATE TABLE IF NOT EXISTS commitments (id SERIAL PRIMARY KEY, response_id INTEGER REFERENCES responses(id), commitment_text TEXT, deadline DATE, accountability_partner TEXT, shared_with JSONB, status TEXT DEFAULT '\''active'\'', created_at TIMESTAMPTZ DEFAULT NOW());"
+            }'
+
+      - name: Store database credentials
+        if: steps.db_config.outputs.db_type == 'supabase'
+        run: |
+          # Store credentials in tool's config
+          jq --arg url "$API_URL" --arg ref "$PROJECT_REF" \
+            '. + {supabase: {url: $url, project_ref: $ref}}' \
+            tools/${{ matrix.tool }}/config.json > tmp.json && mv tmp.json tools/${{ matrix.tool }}/config.json
+
+          git add tools/${{ matrix.tool }}/config.json
+          git commit -m "Add Supabase config for: ${{ matrix.tool }}"
+          git push
+
+      # Generate API endpoint for the tool
+      - name: Generate API endpoint
+        run: |
+          mkdir -p tools/${{ matrix.tool }}/api
+
+          cat > tools/${{ matrix.tool }}/api/responses.js << 'EOF'
+          // Serverless function for handling tool responses
+          // Deploy to Vercel, Netlify, or Cloudflare Workers
+
+          export default async function handler(req, res) {
+            const { method } = req;
+
+            // CORS
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+            if (method === 'OPTIONS') {
+              return res.status(200).end();
+            }
+
+            // In production, connect to your database here
+            // For SQLite: use better-sqlite3 or sql.js
+            // For Supabase: use @supabase/supabase-js
+
+            if (method === 'POST') {
+              const { session_id, inputs, score, verdict, commitment } = req.body;
+
+              // Store response
+              // db.insert('responses', { session_id, inputs, score, verdict, commitment });
+
+              return res.status(201).json({ success: true, message: 'Response saved' });
+            }
+
+            if (method === 'GET') {
+              // Return responses (with optional filtering)
+              // const responses = db.select('responses', { user_id: req.query.user_id });
+
+              return res.status(200).json({ responses: [] });
+            }
+
+            return res.status(405).json({ error: 'Method not allowed' });
+          }
+          EOF
+
+          echo "✅ API endpoint generated"
+
+      - name: Commit API files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add tools/${{ matrix.tool }}/api/
+          git diff --staged --quiet || git commit -m "Add API endpoints for: ${{ matrix.tool }}"
+          git push || echo "Nothing to push"
+
+      - name: Summary
+        run: |
+          echo "## 🎉 Database Setup Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** ${{ matrix.tool }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Database Type:** ${{ steps.db_config.outputs.db_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Category:** ${{ steps.config.outputs.category }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Deploy the API endpoint to your serverless platform" >> $GITHUB_STEP_SUMMARY
+          echo "2. Update the tool's HTML to call the API" >> $GITHUB_STEP_SUMMARY
+          echo "3. Test data collection" >> $GITHUB_STEP_SUMMARY
+
+  notify-completion:
+    needs: [detect-new-tools, setup-database]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send notification
+        run: |
+          # Optional: Send webhook notification to your system
+          if [ -n "${{ secrets.CALLBACK_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.CALLBACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "event": "database_setup_complete",
+                "tools": ${{ needs.detect-new-tools.outputs.tools }},
+                "status": "${{ needs.setup-database.result }}"
+              }'
+          fi

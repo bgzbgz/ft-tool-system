@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{tool_name}} | Fast Track</title>
+  <style>
+    :root {
+      --ft-black: #000000;
+      --ft-white: #FFFFFF;
+      --ft-grey: #B2B2B2;
+      --ft-grey-dark: #1A1A1A;
+      --ft-yellow: #FFF469;
+      --ft-red: #FF6B6B;
+      --ft-green: #4ECDC4;
+      --ft-pink: #E91E63;
+      --ft-accent: var(--ft-pink);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--ft-black);
+      color: var(--ft-white);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .tool-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .tool-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .category-badge {
+      display: inline-block;
+      background: var(--ft-pink);
+      color: var(--ft-white);
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    /* Personal Readiness Check - B2C Service specific */
+    .readiness-check {
+      background: var(--ft-grey-dark);
+      border: 2px solid var(--ft-pink);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .readiness-check h3 {
+      color: var(--ft-pink);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .readiness-meter {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .meter-bar {
+      flex: 1;
+      height: 24px;
+      background: var(--ft-grey-dark);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,0.1);
+    }
+
+    .meter-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--ft-red), var(--ft-yellow), var(--ft-green));
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    .meter-label {
+      font-size: 1.5rem;
+      font-weight: 700;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    .readiness-questions {
+      display: grid;
+      gap: 16px;
+    }
+
+    .readiness-q {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+    }
+
+    .readiness-q label { flex: 1; }
+
+    .yes-no-toggle {
+      display: flex;
+      gap: 8px;
+    }
+
+    .yes-no-toggle button {
+      padding: 8px 16px;
+      border: 2px solid var(--ft-grey-dark);
+      background: transparent;
+      color: var(--ft-grey);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .yes-no-toggle button.yes.selected { border-color: var(--ft-green); background: rgba(78,205,196,0.2); color: var(--ft-green); }
+    .yes-no-toggle button.no.selected { border-color: var(--ft-red); background: rgba(255,107,107,0.2); color: var(--ft-red); }
+
+    /* Provider Chemistry Check */
+    .chemistry-section {
+      background: rgba(233,30,99,0.1);
+      border: 1px solid var(--ft-pink);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+
+    .chemistry-section h4 {
+      color: var(--ft-pink);
+      margin-bottom: 16px;
+    }
+
+    .chemistry-slider {
+      margin-bottom: 24px;
+    }
+
+    .chemistry-slider label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--ft-grey);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      -webkit-appearance: none;
+      background: var(--ft-grey-dark);
+      border-radius: 4px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      background: var(--ft-pink);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--ft-grey);
+      margin-top: 4px;
+    }
+
+    /* Expectations Setting */
+    .expectations {
+      background: var(--ft-grey-dark);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+
+    .expectations h4 {
+      margin-bottom: 16px;
+    }
+
+    .expectation-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .expectation-item:last-child { border-bottom: none; }
+
+    .expectation-item .label {
+      color: var(--ft-grey);
+    }
+
+    .expectation-value {
+      display: flex;
+      gap: 8px;
+    }
+
+    .exp-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--ft-grey-dark);
+      background: transparent;
+      color: var(--ft-grey);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+
+    .exp-btn.selected {
+      border-color: var(--ft-pink);
+      background: rgba(233,30,99,0.2);
+      color: var(--ft-pink);
+    }
+
+    /* Form Elements */
+    .input-group { margin-bottom: 32px; }
+
+    .input-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    textarea, select {
+      width: 100%;
+      padding: 16px;
+      background: var(--ft-grey-dark);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: var(--ft-white);
+      font-size: 1rem;
+    }
+
+    textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--ft-pink);
+    }
+
+    /* Verdict */
+    .verdict {
+      text-align: center;
+      padding: 48px;
+      border-radius: 16px;
+      margin-top: 48px;
+    }
+
+    .verdict.commit { background: linear-gradient(135deg, rgba(78,205,196,0.2), transparent); border: 2px solid var(--ft-green); }
+    .verdict.notready { background: linear-gradient(135deg, rgba(255,244,105,0.2), transparent); border: 2px solid var(--ft-yellow); }
+    .verdict.wrongfit { background: linear-gradient(135deg, rgba(255,107,107,0.2), transparent); border: 2px solid var(--ft-red); }
+
+    .verdict-decision {
+      font-size: 3rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .verdict.commit .verdict-decision { color: var(--ft-green); }
+    .verdict.notready .verdict-decision { color: var(--ft-yellow); }
+    .verdict.wrongfit .verdict-decision { color: var(--ft-red); }
+
+    /* Accountability Mechanism */
+    .accountability {
+      margin-top: 24px;
+      padding: 24px;
+      background: var(--ft-grey-dark);
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .accountability h4 {
+      color: var(--ft-pink);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .accountability-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .accountability-option:hover { border-color: var(--ft-grey-dark); }
+    .accountability-option.selected { border-color: var(--ft-pink); background: rgba(233,30,99,0.1); }
+
+    .accountability-option input { display: none; }
+
+    .check-circle {
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--ft-grey);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .accountability-option.selected .check-circle {
+      border-color: var(--ft-pink);
+      background: var(--ft-pink);
+    }
+
+    .accountability-option.selected .check-circle::after {
+      content: '✓';
+      color: var(--ft-white);
+      font-size: 0.75rem;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: 16px 32px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--ft-yellow);
+      color: var(--ft-black);
+    }
+
+    /* Progress */
+    .progress-bar {
+      height: 4px;
+      background: var(--ft-grey-dark);
+      border-radius: 2px;
+      margin-bottom: 40px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--ft-pink);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Commitment */
+    .commitment-section {
+      background: var(--ft-grey-dark);
+      padding: 32px;
+      border-radius: 16px;
+      margin-top: 32px;
+    }
+
+    .ft-brand {
+      text-align: center;
+      margin-top: 64px;
+      padding-top: 32px;
+      border-top: 1px solid var(--ft-grey-dark);
+      color: var(--ft-grey);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="tool-header">
+      <span class="category-badge">Personal Service Decision</span>
+      <h1>{{tool_name}}</h1>
+      <p class="tagline" style="color: var(--ft-grey);">{{tagline}}</p>
+    </div>
+
+    <!-- Personal Readiness Check -->
+    <div class="readiness-check">
+      <h3>🎯 Are You Ready?</h3>
+      <div class="readiness-meter">
+        <div class="meter-bar">
+          <div class="meter-fill" id="readinessFill"></div>
+        </div>
+        <span class="meter-label" id="readinessScore">0%</span>
+      </div>
+      <div class="readiness-questions">
+        <div class="readiness-q">
+          <label>I have clear goals for what I want to achieve</label>
+          <div class="yes-no-toggle">
+            <button class="yes" onclick="toggleReadiness(this, 'goals', true)">Yes</button>
+            <button class="no" onclick="toggleReadiness(this, 'goals', false)">No</button>
+          </div>
+        </div>
+        <div class="readiness-q">
+          <label>I have time to commit to this consistently</label>
+          <div class="yes-no-toggle">
+            <button class="yes" onclick="toggleReadiness(this, 'time', true)">Yes</button>
+            <button class="no" onclick="toggleReadiness(this, 'time', false)">No</button>
+          </div>
+        </div>
+        <div class="readiness-q">
+          <label>I'm open to feedback and willing to change</label>
+          <div class="yes-no-toggle">
+            <button class="yes" onclick="toggleReadiness(this, 'openness', true)">Yes</button>
+            <button class="no" onclick="toggleReadiness(this, 'openness', false)">No</button>
+          </div>
+        </div>
+        <div class="readiness-q">
+          <label>I've tried solving this on my own first</label>
+          <div class="yes-no-toggle">
+            <button class="yes" onclick="toggleReadiness(this, 'tried', true)">Yes</button>
+            <button class="no" onclick="toggleReadiness(this, 'tried', false)">No</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider Chemistry -->
+    <div class="chemistry-section">
+      <h4>💫 Provider Chemistry Check</h4>
+      <p style="color: var(--ft-grey); margin-bottom: 24px;">Beyond credentials, how do you feel about this provider?</p>
+
+      <div class="chemistry-slider">
+        <label>Trust Level (Can I be vulnerable with them?)</label>
+        <input type="range" min="0" max="100" value="50" id="trustSlider" onchange="updateChemistry()">
+        <div class="slider-labels">
+          <span>Uncertain</span>
+          <span>Moderate</span>
+          <span>Complete trust</span>
+        </div>
+      </div>
+
+      <div class="chemistry-slider">
+        <label>Communication Style Match</label>
+        <input type="range" min="0" max="100" value="50" id="commSlider" onchange="updateChemistry()">
+        <div class="slider-labels">
+          <span>Mismatch</span>
+          <span>Workable</span>
+          <span>Perfect fit</span>
+        </div>
+      </div>
+
+      <div class="chemistry-slider">
+        <label>Value Alignment</label>
+        <input type="range" min="0" max="100" value="50" id="valuesSlider" onchange="updateChemistry()">
+        <div class="slider-labels">
+          <span>Different values</span>
+          <span>Some overlap</span>
+          <span>Fully aligned</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Expectations -->
+    <div class="expectations">
+      <h4>📊 Set Realistic Expectations</h4>
+      <div class="expectation-item">
+        <span class="label">Results timeline</span>
+        <div class="expectation-value">
+          <button class="exp-btn" onclick="selectExpectation(this, 'timeline', 'fast')">Weeks</button>
+          <button class="exp-btn" onclick="selectExpectation(this, 'timeline', 'medium')">Months</button>
+          <button class="exp-btn" onclick="selectExpectation(this, 'timeline', 'slow')">Long-term</button>
+        </div>
+      </div>
+      <div class="expectation-item">
+        <span class="label">Effort required from me</span>
+        <div class="expectation-value">
+          <button class="exp-btn" onclick="selectExpectation(this, 'effort', 'low')">Minimal</button>
+          <button class="exp-btn" onclick="selectExpectation(this, 'effort', 'medium')">Moderate</button>
+          <button class="exp-btn" onclick="selectExpectation(this, 'effort', 'high')">Intensive</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content" id="toolContent">
+      {{tool_content}}
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict" id="verdictDisplay">
+      <div class="verdict-decision" id="verdictDecision">ASSESSING...</div>
+      <p id="verdictMessage">Complete your self-assessment above.</p>
+
+      <!-- Accountability (shown on COMMIT) -->
+      <div class="accountability" id="accountabilitySection" style="display: none;">
+        <h4>Your Accountability Partner</h4>
+        <p style="color: var(--ft-grey); margin-bottom: 16px;">Who will hold you to this commitment?</p>
+        <div class="accountability-option" onclick="selectAccountability(this, 'friend')">
+          <input type="radio" name="accountability" value="friend">
+          <span class="check-circle"></span>
+          <span>A trusted friend</span>
+        </div>
+        <div class="accountability-option" onclick="selectAccountability(this, 'partner')">
+          <input type="radio" name="accountability" value="partner">
+          <span class="check-circle"></span>
+          <span>My partner/spouse</span>
+        </div>
+        <div class="accountability-option" onclick="selectAccountability(this, 'provider')">
+          <input type="radio" name="accountability" value="provider">
+          <span class="check-circle"></span>
+          <span>The service provider</span>
+        </div>
+        <div class="accountability-option" onclick="selectAccountability(this, 'public')">
+          <input type="radio" name="accountability" value="public">
+          <span class="check-circle"></span>
+          <span>Public commitment (social media)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commitment -->
+    <div class="commitment-section" id="commitmentSection" style="display: none;">
+      <h3 style="margin-bottom: 24px;">Your Commitment</h3>
+      <div class="input-group">
+        <label class="input-label">I commit to:</label>
+        <textarea id="commitmentText" rows="3" placeholder="I will [START SERVICE] and commit to [SPECIFIC ACTIONS]..."></textarea>
+      </div>
+      <div class="input-group">
+        <label class="input-label">First session/start date:</label>
+        <input type="date" id="startDate" style="width: 100%; padding: 16px; background: var(--ft-grey-dark); border: 2px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--ft-white);">
+      </div>
+      <button class="btn btn-primary" onclick="submitCommitment()">Seal My Commitment</button>
+    </div>
+
+    <div class="ft-brand">
+      Built with <a href="https://fasttrack.co" style="color: var(--ft-pink);">Fast Track</a>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      readiness: { goals: null, time: null, openness: null, tried: null },
+      chemistry: { trust: 50, comm: 50, values: 50 },
+      expectations: { timeline: null, effort: null },
+      accountability: null,
+      score: 0
+    };
+
+    function toggleReadiness(btn, key, value) {
+      state.readiness[key] = value;
+      const toggle = btn.parentElement;
+      toggle.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateScore();
+    }
+
+    function updateChemistry() {
+      state.chemistry.trust = parseInt(document.getElementById('trustSlider').value);
+      state.chemistry.comm = parseInt(document.getElementById('commSlider').value);
+      state.chemistry.values = parseInt(document.getElementById('valuesSlider').value);
+      updateScore();
+    }
+
+    function selectExpectation(btn, key, value) {
+      state.expectations[key] = value;
+      btn.parentElement.querySelectorAll('.exp-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateScore();
+    }
+
+    function selectAccountability(el, value) {
+      state.accountability = value;
+      document.querySelectorAll('.accountability-option').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+    }
+
+    function updateScore() {
+      let score = 0;
+
+      // Readiness (40 points)
+      Object.values(state.readiness).forEach(v => {
+        if (v === true) score += 10;
+        else if (v === false) score -= 5;
+      });
+
+      // Chemistry (40 points)
+      const chemAvg = (state.chemistry.trust + state.chemistry.comm + state.chemistry.values) / 3;
+      score += (chemAvg / 100) * 40;
+
+      // Expectations set (20 points)
+      if (state.expectations.timeline) score += 10;
+      if (state.expectations.effort) score += 10;
+
+      state.score = Math.max(0, Math.min(100, Math.round(score)));
+
+      // Update readiness meter
+      document.getElementById('readinessFill').style.width = state.score + '%';
+      document.getElementById('readinessScore').textContent = state.score + '%';
+
+      updateVerdict();
+      updateProgress();
+    }
+
+    function updateVerdict() {
+      const verdict = document.getElementById('verdictDisplay');
+      const decision = document.getElementById('verdictDecision');
+      const message = document.getElementById('verdictMessage');
+      const accountability = document.getElementById('accountabilitySection');
+      const commitment = document.getElementById('commitmentSection');
+
+      verdict.classList.remove('commit', 'notready', 'wrongfit');
+
+      const chemAvg = (state.chemistry.trust + state.chemistry.comm + state.chemistry.values) / 3;
+      const readinessYes = Object.values(state.readiness).filter(v => v === true).length;
+
+      if (chemAvg < 40) {
+        verdict.classList.add('wrongfit');
+        decision.textContent = 'WRONG FIT';
+        message.textContent = 'The chemistry isn\'t there. Find a different provider.';
+        accountability.style.display = 'none';
+        commitment.style.display = 'none';
+      } else if (readinessYes < 3) {
+        verdict.classList.add('notready');
+        decision.textContent = 'NOT READY';
+        message.textContent = 'Work on your readiness first. This service won\'t help until you are.';
+        accountability.style.display = 'none';
+        commitment.style.display = 'block';
+      } else if (state.score >= 60) {
+        verdict.classList.add('commit');
+        decision.textContent = 'COMMIT';
+        message.textContent = 'You\'re ready and it\'s a good fit. Go for it.';
+        accountability.style.display = 'block';
+        commitment.style.display = 'block';
+      } else {
+        verdict.classList.add('notready');
+        decision.textContent = 'MORE CLARITY NEEDED';
+        message.textContent = 'Complete all assessments before deciding.';
+        accountability.style.display = 'none';
+        commitment.style.display = 'none';
+      }
+    }
+
+    function updateProgress() {
+      let filled = 0;
+      let total = 10;
+
+      Object.values(state.readiness).forEach(v => { if (v !== null) filled++; });
+      filled += 3; // Chemistry always has values
+      if (state.expectations.timeline) filled++;
+      if (state.expectations.effort) filled++;
+
+      document.getElementById('progressFill').style.width = (filled / total * 100) + '%';
+    }
+
+    function submitCommitment() {
+      const commitment = document.getElementById('commitmentText').value;
+      const startDate = document.getElementById('startDate').value;
+      const accountability = state.accountability || 'self';
+
+      alert(`Commitment sealed!\n\n${commitment}\n\nStart: ${startDate}\nAccountability: ${accountability}`);
+    }
+
+    updateProgress();
+  </script>
+</body>
+</html>

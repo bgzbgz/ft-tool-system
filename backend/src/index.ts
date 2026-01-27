@@ -9,6 +9,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import {
   initializeConfiguration,
   logConfigurationState,
@@ -20,8 +21,11 @@ import { CONFIG_BLOCKING_MESSAGE } from './config/errors';
 import healthRouter from './routes/health';
 import factoryRouter from './routes/factory';
 import jobsRouter from './routes/jobs';
+import authRouter from './routes/auth';
 import configGuard from './middleware/configGuard';
 import { seedExampleJobs } from './services/jobStore';
+import { isLearnWorldsConfigured } from './services/learnworlds';
+import { isGitHubConfigured } from './services/github';
 
 // ========== STARTUP VALIDATION ==========
 
@@ -76,10 +80,16 @@ app.use(cors({
 // Parse JSON bodies
 app.use(express.json());
 
+// Parse cookies for session management
+app.use(cookieParser());
+
 // ========== ROUTES ==========
 
 // Health endpoint - MUST be available even in CONFIG_ERROR state (no configGuard)
 app.use('/api', healthRouter);
+
+// Auth routes - LearnWorlds SSO integration
+app.use('/api/auth', authRouter);
 
 // Jobs routes - for Boss Office app
 app.use('/api/boss/jobs', jobsRouter);
@@ -92,7 +102,11 @@ app.get('/', (req, res) => {
   res.json({
     service: 'Boss Office API',
     version: '1.0.0',
-    config_state: isConfigurationValid() ? 'VALID' : 'CONFIG_ERROR'
+    config_state: isConfigurationValid() ? 'VALID' : 'CONFIG_ERROR',
+    integrations: {
+      learnworlds: isLearnWorldsConfigured(),
+      github: isGitHubConfigured()
+    }
   });
 });
 
