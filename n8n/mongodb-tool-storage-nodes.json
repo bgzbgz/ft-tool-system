@@ -1,0 +1,328 @@
+{
+  "name": "MongoDB Tool Response Storage Nodes",
+  "description": "n8n workflow nodes for storing tool responses in MongoDB with LearnWorlds authentication",
+  "version": "1.0.0",
+
+  "credentials_required": [
+    {
+      "name": "MongoDB",
+      "type": "mongoDb",
+      "config": {
+        "connectionString": "YOUR_MONGODB_URI",
+        "database": "fast_track_tools"
+      },
+      "note": "Create MongoDB credentials in n8n: Settings > Credentials > Add Credential > MongoDB"
+    },
+    {
+      "name": "LearnWorlds API",
+      "type": "httpHeader",
+      "config": {
+        "name": "Lw-Client",
+        "value": "YOUR_LEARNWORLDS_API_KEY"
+      },
+      "note": "Get API key from LearnWorlds: Settings > Integrations > API"
+    }
+  ],
+
+  "workflow_nodes": [
+    {
+      "id": "webhook_tool_response",
+      "name": "Tool Response Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "description": "Receives POST from tool HTML form submission",
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tool-response",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "expected_payload": {
+        "tool_slug": "should-i-buy-this",
+        "session_id": "sess_abc123",
+        "lw_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "client_info": {
+          "name": "John Doe",
+          "company": "Acme Corp",
+          "email": "john@acme.com"
+        },
+        "inputs": {
+          "budget": "5000",
+          "need_urgency": "high",
+          "alternatives_considered": "yes"
+        },
+        "score": 75,
+        "started_at": "2024-01-15T10:00:00Z"
+      }
+    },
+
+    {
+      "id": "validate_learnworlds",
+      "name": "Validate LearnWorlds Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "description": "Validates SSO token and gets user info from LearnWorlds",
+      "position": [450, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $env.LEARNWORLDS_SCHOOL_ID }}.learnworlds.com/api/v2/users/me",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.lw_token }}"
+            },
+            {
+              "name": "Lw-Client",
+              "value": "={{ $env.LEARNWORLDS_CLIENT_ID }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "notes": "If token is invalid, this will return 401. Handle in IF node."
+    },
+
+    {
+      "id": "check_auth_result",
+      "name": "Auth Valid?",
+      "type": "n8n-nodes-base.if",
+      "description": "Check if LearnWorlds authentication succeeded",
+      "position": [650, 300],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "build_user_object",
+      "name": "Build User Object",
+      "type": "n8n-nodes-base.set",
+      "description": "Extract LearnWorlds user info into standard format",
+      "position": [850, 250],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "user.user_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "user.email",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "name": "user.first_name",
+              "value": "={{ $json.first_name }}"
+            },
+            {
+              "name": "user.last_name",
+              "value": "={{ $json.last_name }}"
+            },
+            {
+              "name": "user.role",
+              "value": "={{ $json.role || 'student' }}"
+            },
+            {
+              "name": "user.school_id",
+              "value": "={{ $env.LEARNWORLDS_SCHOOL_ID }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "user.enrolled_courses",
+              "value": "={{ $json.enrolled_courses || [] }}"
+            },
+            {
+              "name": "user.tags",
+              "value": "={{ $json.tags || [] }}"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true
+        }
+      }
+    },
+
+    {
+      "id": "merge_response_data",
+      "name": "Merge Response Data",
+      "type": "n8n-nodes-base.merge",
+      "description": "Combine user info with original webhook payload",
+      "position": [1050, 250],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      }
+    },
+
+    {
+      "id": "calculate_verdict",
+      "name": "Calculate Verdict",
+      "type": "n8n-nodes-base.code",
+      "description": "Determine GO/NO_GO/MAYBE based on score",
+      "position": [1250, 250],
+      "parameters": {
+        "jsCode": "// Get score from input\nconst score = $input.first().json.score || 0;\nconst passThreshold = 70;\nconst maxScore = 100;\n\nconst percentage = (score / maxScore) * 100;\n\nlet verdict, verdictMessage;\n\nif (percentage >= passThreshold) {\n  verdict = 'GO';\n  verdictMessage = `Score ${score}/${maxScore} (${percentage.toFixed(0)}%) meets the threshold. Proceed with confidence.`;\n} else if (percentage >= passThreshold - 15) {\n  verdict = 'MAYBE';\n  verdictMessage = `Score ${score}/${maxScore} (${percentage.toFixed(0)}%) is close. Review the gaps before deciding.`;\n} else {\n  verdict = 'NO_GO';\n  verdictMessage = `Score ${score}/${maxScore} (${percentage.toFixed(0)}%) indicates significant gaps. Reconsider this decision.`;\n}\n\n// Generate response ID\nconst timestamp = Date.now().toString(36);\nconst random = Math.random().toString(36).substring(2, 10);\nconst responseId = `resp_${timestamp}_${random}`;\n\n// Calculate time spent\nconst startedAt = new Date($input.first().json.started_at || Date.now() - 300000);\nconst completedAt = new Date();\nconst timeSpentSeconds = Math.round((completedAt.getTime() - startedAt.getTime()) / 1000);\n\nreturn {\n  json: {\n    ...$input.first().json,\n    response_id: responseId,\n    verdict: verdict,\n    verdict_message: verdictMessage,\n    started_at: startedAt.toISOString(),\n    completed_at: completedAt.toISOString(),\n    time_spent_seconds: timeSpentSeconds\n  }\n};"
+      }
+    },
+
+    {
+      "id": "build_mongo_document",
+      "name": "Build MongoDB Document",
+      "type": "n8n-nodes-base.set",
+      "description": "Structure the final document for MongoDB insertion",
+      "position": [1450, 250],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "_type",
+              "value": "response"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      },
+      "notes": "The document is already structured from previous nodes"
+    },
+
+    {
+      "id": "get_collection_name",
+      "name": "Get Collection Name",
+      "type": "n8n-nodes-base.code",
+      "description": "Generate MongoDB collection name from tool slug",
+      "position": [1650, 250],
+      "parameters": {
+        "jsCode": "const toolSlug = $input.first().json.tool_slug;\n\nconst sanitized = toolSlug\n  .toLowerCase()\n  .replace(/[^a-z0-9_]/g, '_')\n  .replace(/_+/g, '_')\n  .slice(0, 60);\n\nconst collectionName = `tool_${sanitized}`;\n\nreturn {\n  json: {\n    ...$input.first().json,\n    _collection: collectionName\n  }\n};"
+      }
+    },
+
+    {
+      "id": "insert_mongodb",
+      "name": "Insert to MongoDB",
+      "type": "n8n-nodes-base.mongoDb",
+      "description": "Insert response document into tool's collection",
+      "position": [1850, 250],
+      "parameters": {
+        "operation": "insert",
+        "collection": "={{ $json._collection }}",
+        "fields": "_type,response_id,session_id,user,client_info,inputs,score,verdict,verdict_message,started_at,completed_at,time_spent_seconds,context",
+        "options": {}
+      },
+      "credentials": {
+        "mongoDb": "MongoDB"
+      }
+    },
+
+    {
+      "id": "success_response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "description": "Return success with verdict to the tool",
+      "position": [2050, 250],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"response_id\": \"{{ $json.response_id }}\",\n  \"verdict\": \"{{ $json.verdict }}\",\n  \"verdict_message\": \"{{ $json.verdict_message }}\",\n  \"score\": {{ $json.score }}\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "auth_failed_response",
+      "name": "Auth Failed Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "description": "Return error when LearnWorlds auth fails",
+      "position": [850, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Authentication failed\",\n  \"message\": \"Please log in to LearnWorlds to save your results\"\n}",
+        "options": {
+          "responseCode": "401",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+
+  "connections": {
+    "Tool Response Webhook": {
+      "main": [[{ "node": "Validate LearnWorlds Token", "type": "main", "index": 0 }]]
+    },
+    "Validate LearnWorlds Token": {
+      "main": [[{ "node": "Auth Valid?", "type": "main", "index": 0 }]]
+    },
+    "Auth Valid?": {
+      "main": [
+        [{ "node": "Build User Object", "type": "main", "index": 0 }],
+        [{ "node": "Auth Failed Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build User Object": {
+      "main": [[{ "node": "Merge Response Data", "type": "main", "index": 0 }]]
+    },
+    "Merge Response Data": {
+      "main": [[{ "node": "Calculate Verdict", "type": "main", "index": 0 }]]
+    },
+    "Calculate Verdict": {
+      "main": [[{ "node": "Build MongoDB Document", "type": "main", "index": 0 }]]
+    },
+    "Build MongoDB Document": {
+      "main": [[{ "node": "Get Collection Name", "type": "main", "index": 0 }]]
+    },
+    "Get Collection Name": {
+      "main": [[{ "node": "Insert to MongoDB", "type": "main", "index": 0 }]]
+    },
+    "Insert to MongoDB": {
+      "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "environment_variables": {
+    "LEARNWORLDS_SCHOOL_ID": "your-school",
+    "LEARNWORLDS_CLIENT_ID": "your-client-id",
+    "LEARNWORLDS_API_KEY": "your-api-key"
+  },
+
+  "tool_html_integration": {
+    "description": "Add this JavaScript to your generated tool HTML to submit responses",
+    "example_code": "// Submit tool response to n8n webhook\nasync function submitToolResponse(formData, score) {\n  const lwToken = getCookie('lw_sso_token') || localStorage.getItem('lw_token');\n  \n  const payload = {\n    tool_slug: TOOL_SLUG, // Set in tool config\n    session_id: getSessionId(),\n    lw_token: lwToken,\n    client_info: {\n      name: formData.get('name'),\n      company: formData.get('company'),\n      email: formData.get('email')\n    },\n    inputs: Object.fromEntries(formData),\n    score: score,\n    started_at: sessionStartTime.toISOString(),\n    context: {\n      user_agent: navigator.userAgent,\n      referrer: document.referrer,\n      utm_source: new URLSearchParams(window.location.search).get('utm_source'),\n      utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign')\n    }\n  };\n\n  const response = await fetch('YOUR_N8N_WEBHOOK_URL/tool-response', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify(payload)\n  });\n\n  return await response.json();\n}"
+  }
+}

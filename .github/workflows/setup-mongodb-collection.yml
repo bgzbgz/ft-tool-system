@@ -1,0 +1,351 @@
+name: Setup MongoDB Tool Collection
+
+on:
+  # Trigger when a new tool is pushed
+  push:
+    paths:
+      - 'tools/*/index.html'
+      - 'tools/*/config.json'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      tool_slug:
+        description: 'Tool slug (directory name)'
+        required: true
+        type: string
+
+env:
+  MONGODB_URI: ${{ secrets.MONGODB_URI }}
+
+jobs:
+  detect-new-tools:
+    runs-on: ubuntu-latest
+    outputs:
+      tools: ${{ steps.detect.outputs.tools }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect new/changed tools
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual trigger - use input
+            echo "tools=[\"${{ inputs.tool_slug }}\"]" >> $GITHUB_OUTPUT
+          else
+            # Push trigger - detect from changed files
+            TOOLS=$(git diff --name-only HEAD~1 HEAD | grep '^tools/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Show detected tools
+        run: |
+          echo "Tools to process: ${{ steps.detect.outputs.tools }}"
+
+  setup-mongodb:
+    needs: detect-new-tools
+    runs-on: ubuntu-latest
+    if: needs.detect-new-tools.outputs.tools != '[]' && needs.detect-new-tools.outputs.tools != ''
+    strategy:
+      matrix:
+        tool: ${{ fromJson(needs.detect-new-tools.outputs.tools) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install mongodb cheerio
+
+      - name: Verify MongoDB Connection
+        run: |
+          if [ -z "$MONGODB_URI" ]; then
+            echo "❌ MONGODB_URI secret not configured"
+            exit 1
+          fi
+          echo "✅ MongoDB URI configured"
+
+      - name: Read tool config
+        id: config
+        run: |
+          if [ -f "tools/${{ matrix.tool }}/config.json" ]; then
+            TOOL_NAME=$(jq -r '.tool_name // "Unknown Tool"' tools/${{ matrix.tool }}/config.json)
+            TOOL_ID=$(jq -r '.tool_id // ""' tools/${{ matrix.tool }}/config.json)
+            CATEGORY=$(jq -r '.category // "b2c_product"' tools/${{ matrix.tool }}/config.json)
+            DECISION=$(jq -r '.decision // ""' tools/${{ matrix.tool }}/config.json)
+            TAGLINE=$(jq -r '.tagline // ""' tools/${{ matrix.tool }}/config.json)
+            ESTIMATED_TIME=$(jq -r '.estimated_time // "5 minutes"' tools/${{ matrix.tool }}/config.json)
+            QA_SCORE=$(jq -r '.qa_score // 0' tools/${{ matrix.tool }}/config.json)
+
+            echo "tool_name=$TOOL_NAME" >> $GITHUB_OUTPUT
+            echo "tool_id=$TOOL_ID" >> $GITHUB_OUTPUT
+            echo "category=$CATEGORY" >> $GITHUB_OUTPUT
+            echo "decision=$DECISION" >> $GITHUB_OUTPUT
+            echo "tagline=$TAGLINE" >> $GITHUB_OUTPUT
+            echo "estimated_time=$ESTIMATED_TIME" >> $GITHUB_OUTPUT
+            echo "qa_score=$QA_SCORE" >> $GITHUB_OUTPUT
+            echo "has_config=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_config=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No config.json found for tool: ${{ matrix.tool }}"
+          fi
+
+      - name: Provision MongoDB Collection
+        if: steps.config.outputs.has_config == 'true'
+        run: |
+          node << 'EOF'
+          const { MongoClient } = require('mongodb');
+          const cheerio = require('cheerio');
+          const fs = require('fs');
+          const path = require('path');
+
+          // Configuration from environment and GitHub outputs
+          const toolSlug = '${{ matrix.tool }}';
+          const config = {
+            tool_id: '${{ steps.config.outputs.tool_id }}' || `tool_${Date.now()}`,
+            tool_name: '${{ steps.config.outputs.tool_name }}',
+            category: '${{ steps.config.outputs.category }}',
+            decision: '${{ steps.config.outputs.decision }}',
+            tagline: '${{ steps.config.outputs.tagline }}',
+            estimated_time: '${{ steps.config.outputs.estimated_time }}',
+            qa_score: parseInt('${{ steps.config.outputs.qa_score }}') || 0
+          };
+
+          // Generate collection name
+          function getCollectionName(slug) {
+            return 'tool_' + slug.toLowerCase()
+              .replace(/[^a-z0-9_]/g, '_')
+              .replace(/_+/g, '_')
+              .slice(0, 60);
+          }
+
+          // Parse questions from HTML
+          function parseQuestionsFromHtml(html) {
+            const $ = cheerio.load(html);
+            const questions = [];
+
+            $('label').each((i, labelEl) => {
+              const $label = $(labelEl);
+              const labelText = $label.text().trim();
+              const forAttr = $label.attr('for');
+
+              let $input = forAttr ? $(`#${forAttr}`) : $label.find('input, select, textarea').first();
+              if ($input.length === 0) {
+                $input = $label.next('input, select, textarea');
+              }
+
+              if ($input.length > 0 && labelText) {
+                const fieldName = $input.attr('name') || $input.attr('id') || `field_${i}`;
+                const tagName = ($input.prop('tagName') || '').toLowerCase();
+                const inputType = $input.attr('type') || 'text';
+
+                const question = {
+                  field_name: fieldName,
+                  label: labelText.replace(/[*:]/g, '').trim(),
+                  field_type: mapInputType(tagName, inputType),
+                  required: $input.attr('required') !== undefined
+                };
+
+                // Handle select options
+                if (tagName === 'select') {
+                  question.options = $input.find('option').map((_, opt) => $(opt).text().trim()).get();
+                }
+
+                // Handle radio/checkbox groups
+                if (inputType === 'radio' || inputType === 'checkbox') {
+                  const groupName = $input.attr('name');
+                  if (groupName) {
+                    question.options = $(`input[name="${groupName}"]`).map((_, inp) => {
+                      const $inp = $(inp);
+                      return $inp.attr('value') || $inp.next('span, label').text().trim();
+                    }).get();
+                  }
+                }
+
+                // Handle range inputs
+                if (inputType === 'range' || inputType === 'number') {
+                  question.min = parseInt($input.attr('min') || '0');
+                  question.max = parseInt($input.attr('max') || '100');
+                }
+
+                questions.push(question);
+              }
+            });
+
+            // Also look for data-question attributes
+            $('input[data-question], select[data-question], textarea[data-question]').each((i, el) => {
+              const $el = $(el);
+              const questionText = $el.attr('data-question');
+              if (questionText && !questions.find(q => q.field_name === $el.attr('name'))) {
+                questions.push({
+                  field_name: $el.attr('name') || `data_field_${i}`,
+                  label: questionText,
+                  field_type: mapInputType(($el.prop('tagName') || '').toLowerCase(), $el.attr('type')),
+                  required: $el.attr('required') !== undefined
+                });
+              }
+            });
+
+            return questions;
+          }
+
+          function mapInputType(tagName, inputType) {
+            if (tagName === 'select') return 'select';
+            if (tagName === 'textarea') return 'textarea';
+            switch (inputType) {
+              case 'number': return 'number';
+              case 'range': return 'range';
+              case 'radio': return 'radio';
+              case 'checkbox': return 'checkbox';
+              default: return 'text';
+            }
+          }
+
+          async function main() {
+            const client = new MongoClient(process.env.MONGODB_URI);
+
+            try {
+              await client.connect();
+              console.log('✅ Connected to MongoDB');
+
+              const db = client.db('fast_track_tools');
+              const collectionName = getCollectionName(toolSlug);
+
+              // Create collection if it doesn't exist
+              const collections = await db.listCollections({ name: collectionName }).toArray();
+              if (collections.length === 0) {
+                await db.createCollection(collectionName);
+                console.log(`✅ Created collection: ${collectionName}`);
+              } else {
+                console.log(`ℹ️ Collection exists: ${collectionName}`);
+              }
+
+              const collection = db.collection(collectionName);
+
+              // Create indexes
+              const indexes = [
+                { key: { _type: 1 } },
+                { key: { 'user.user_id': 1, completed_at: -1 } },
+                { key: { session_id: 1 } },
+                { key: { completed_at: -1 } },
+                { key: { verdict: 1, completed_at: -1 } },
+                { key: { response_id: 1 }, unique: true, sparse: true },
+                { key: { 'client_info.company': 1 } },
+                { key: { 'client_info.email': 1 } }
+              ];
+
+              for (const idx of indexes) {
+                try {
+                  await collection.createIndex(idx.key, { unique: idx.unique, sparse: idx.sparse });
+                } catch (e) {
+                  // Index may already exist
+                }
+              }
+              console.log('✅ Indexes created');
+
+              // Read and parse HTML
+              const htmlPath = path.join('tools', toolSlug, 'index.html');
+              let questions = [];
+              let toolHtml = '';
+
+              if (fs.existsSync(htmlPath)) {
+                toolHtml = fs.readFileSync(htmlPath, 'utf8');
+                questions = parseQuestionsFromHtml(toolHtml);
+                console.log(`✅ Parsed ${questions.length} questions from HTML`);
+              } else {
+                console.log('⚠️ No index.html found, storing config only');
+              }
+
+              // Build tool URL
+              const owner = process.env.GITHUB_REPOSITORY_OWNER || 'unknown';
+              const repo = (process.env.GITHUB_REPOSITORY || '').split('/')[1] || 'unknown';
+              const toolUrl = `https://${owner}.github.io/${repo}/tools/${toolSlug}/`;
+
+              // Create metadata document
+              const metadataDoc = {
+                _type: 'metadata',
+                tool_id: config.tool_id,
+                tool_slug: toolSlug,
+                tool_name: config.tool_name,
+                category: config.category,
+                decision: config.decision,
+                tagline: config.tagline,
+                estimated_time: config.estimated_time,
+                questions: questions,
+                scoring: {
+                  criteria: [],
+                  pass_threshold: 70,
+                  max_score: 100
+                },
+                tool_html: toolHtml,
+                deployed_at: new Date(),
+                deployed_by: 'github-actions',
+                qa_score: config.qa_score,
+                tool_url: toolUrl
+              };
+
+              // Upsert metadata
+              await collection.updateOne(
+                { _type: 'metadata', tool_id: config.tool_id },
+                { $set: metadataDoc },
+                { upsert: true }
+              );
+
+              console.log('✅ Metadata document stored');
+              console.log(`\n📊 Collection Summary:`);
+              console.log(`   Name: ${collectionName}`);
+              console.log(`   Tool: ${config.tool_name}`);
+              console.log(`   Questions: ${questions.length}`);
+              console.log(`   URL: ${toolUrl}`);
+
+            } catch (error) {
+              console.error('❌ Error:', error.message);
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          }
+
+          main();
+          EOF
+
+      - name: Summary
+        run: |
+          echo "## 🎉 MongoDB Collection Setup Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool:** ${{ matrix.tool }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tool Name:** ${{ steps.config.outputs.tool_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Category:** ${{ steps.config.outputs.category }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Collection:** tool_${{ matrix.tool }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Structure" >> $GITHUB_STEP_SUMMARY
+          echo "- **Metadata**: Tool content, questions, scoring config" >> $GITHUB_STEP_SUMMARY
+          echo "- **Responses**: Client submissions with LearnWorlds auth" >> $GITHUB_STEP_SUMMARY
+          echo "- **Analytics**: Aggregated usage statistics" >> $GITHUB_STEP_SUMMARY
+
+  notify-completion:
+    needs: [detect-new-tools, setup-mongodb]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send notification
+        run: |
+          # Optional: Send webhook notification to n8n
+          if [ -n "${{ secrets.N8N_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "event": "mongodb_collection_created",
+                "tools": ${{ needs.detect-new-tools.outputs.tools }},
+                "status": "${{ needs.setup-mongodb.result }}",
+                "database": "fast_track_tools"
+              }' || echo "Webhook notification failed"
+          fi
