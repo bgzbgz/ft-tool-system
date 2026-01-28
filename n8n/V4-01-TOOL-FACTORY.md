@@ -98,6 +98,20 @@ Webhook (Boss Submission)
 
 ---
 
+## IMPORTANT: Context Embedding Strategy
+
+**Per CTO guidance**: The Three Principles (8-Point Criteria, Brand Guidelines, Friction Report) are **embedded directly in agent system prompts** rather than fetched from MongoDB at runtime.
+
+**Why this approach**:
+- Reduces token overhead by ~60%
+- Eliminates MongoDB fetch latency
+- Ensures consistent context every time
+- Makes agents faster and more reliable
+
+**See**: `V4-COMPRESSED-PROMPTS.md` for the complete embedded context.
+
+---
+
 ## Node-by-Node Configuration
 
 ### Node 1: Webhook (Trigger)
@@ -350,82 +364,21 @@ return [{
 
 ---
 
-### Node 5: Fetch Context Documents (MongoDB - Parallel)
+### ~~Node 5: Fetch Context Documents~~ (REMOVED)
 
-Create 4 parallel MongoDB nodes to fetch context:
-
-**5a. MongoDB - Brand Guidelines**
-```json
-{
-  "operation": "find",
-  "collection": "context_documents",
-  "query": { "type": "brand_guidelines" },
-  "limit": 1
-}
-```
-
-**5b. MongoDB - Writing Guide**
-```json
-{
-  "operation": "find",
-  "collection": "context_documents",
-  "query": { "type": "writing_guide" },
-  "limit": 1
-}
-```
-
-**5c. MongoDB - 8 Point Criteria**
-```json
-{
-  "operation": "find",
-  "collection": "context_documents",
-  "query": { "type": "eight_point_criteria" },
-  "limit": 1
-}
-```
-
-**5d. MongoDB - Previous Feedback**
-```json
-{
-  "operation": "find",
-  "collection": "context_documents",
-  "query": { "type": "previous_feedback" },
-  "limit": 1
-}
-```
+> **REMOVED**: Per CTO guidance, context documents (8-Point Criteria, Brand Guidelines, Friction Report) are now **embedded directly in agent system prompts** instead of fetched from MongoDB.
+>
+> This reduces latency and ensures consistent context. See `V4-COMPRESSED-PROMPTS.md` for the embedded versions.
 
 ---
 
-### Node 6: Merge Context (Code)
+### ~~Node 6: Merge Context~~ (REMOVED)
 
-```javascript
-// Merge all context for AI agents
-const input = $('Category Router').first().json;
-
-let brand = '', writing = '', criteria = '', feedback = '';
-
-try { brand = $('MongoDB - Brand Guidelines').first().json.content || ''; } catch(e) {}
-try { writing = $('MongoDB - Writing Guide').first().json.content || ''; } catch(e) {}
-try { criteria = $('MongoDB - 8 Point Criteria').first().json.content || ''; } catch(e) {}
-try { feedback = $('MongoDB - Previous Feedback').first().json.content || ''; } catch(e) {}
-
-return [{
-  json: {
-    ...input,
-    context: {
-      brand_guidelines: brand,
-      writing_guide: writing,
-      eight_point_criteria: criteria,
-      previous_feedback: feedback,
-      category_prompt: input.category_config.prompt_additions
-    }
-  }
-}];
-```
+> **REMOVED**: No longer needed since context is embedded in system prompts.
 
 ---
 
-### Node 7: Secretary Agent (AI Agent)
+### Node 5: Secretary Agent (AI Agent)
 
 **Model**: Google Gemini 1.5 Pro
 
@@ -481,42 +434,61 @@ Analyze this and create the brief for the Tool Builder.
 
 ---
 
-### Node 8: Tool Builder Agent (AI Agent)
+### Node 6: Tool Builder Agent (AI Agent)
 
 **Model**: Google Gemini 1.5 Pro
 
-**System Message**:
+**System Message** (EMBEDDED - from V4-COMPRESSED-PROMPTS.md):
 ```
-You are "The Tool Builder" - you create world-class educational tools for Fast Track.
+You are the Fast Track Tool Builder. You create world-class educational tools.
 
-YOUR CONTEXT:
-1. Fast Track Approach: {{ $json.context.brand_guidelines }}
-2. Previous Mistakes to Avoid: {{ $json.context.previous_feedback }}
-3. 8-Point Criteria: {{ $json.context.eight_point_criteria }}
-4. Writing Guide: {{ $json.context.writing_guide }}
+## THE 8-POINT CRITERIA (MANDATORY - ALL MUST PASS)
+Every tool MUST satisfy ALL 8 points:
+1. FORCES DECISION - Concrete outcome, not just thinking. User leaves with GO/NO-GO verdict.
+2. ZERO INSTRUCTIONS - Self-evident. No "how to use" text. No confusion. No support needed.
+3. EASY FIRST STEPS - Simple entry that builds confidence immediately.
+4. INSTANT FEEDBACK - Every input shows immediate validation (like credit card fields turning red).
+5. GAMIFICATION - Progress bars, scores, visual rewards that make progress feel exciting.
+6. VISIBLE RESULTS - Crystal clear output showing exactly what user created.
+7. COMMITMENT CAPTURE - Public commitment mechanism that creates accountability.
+8. FAST TRACK DNA - Unmistakable brand identity. Gritty. Direct. Premium €20K feel.
 
-THE 8-POINT CRITERIA (Must satisfy ALL):
-1. FORCE DECISION - Tool must force a clear verdict
-2. ZERO INSTRUCTIONS - No "how to use" text, tool is self-evident
-3. INSTANT FEEDBACK - Every input shows immediate response
-4. GAMIFICATION - Progress bars, scores, visual rewards
-5. CLEAR VERDICTS - Unambiguous GO/NO-GO type outcomes
-6. COMMITMENT - User must commit to action at the end
-7. FAST TRACK DNA - Bold, direct, action-oriented
-8. SINGLE HTML - Everything in one self-contained file
+## BRAND DNA
+CORE PRINCIPLES:
+- Brutal Honesty: No sugar-coating. Truth over comfort. Direct and clear.
+- Obsessive 80/20: 20% of inputs drive 80% of outcomes. Ruthless prioritization.
+- Die Empty: Full commitment or nothing. Total effort until job is done.
 
-{{ $json.context.category_prompt }}
+TONE OF VOICE:
+DO: Short sharp sentences. Active tense. Day-to-day language. Bold statements.
+DON'T: Rambling. Hedge words (maybe, might, could). Corporate jargon. Fluff.
 
-OUTPUT FORMAT:
-Create a complete MARKDOWN SPECIFICATION that includes:
+## WHAT A TOOL IS
+A tool helps users APPLY knowledge to MAKE DECISIONS.
+- NOT a quiz, NOT passive reading, NOT a worksheet to print
+- IS an active decision machine with gamification and commitment
+
+## FRICTION POINTS TO AVOID
+❌ Vague terms without definitions
+❌ Blank text boxes with no ghost text guidance
+❌ No validation on inputs
+❌ Too many steps visible at once (use wizard flow)
+❌ No progress indicator
+❌ Dense walls of text
+❌ Ending with "things to consider" instead of verdict
+❌ No commitment capture at the end
+
+## OUTPUT FORMAT
+Create a complete MARKDOWN SPECIFICATION including:
 1. Tool metadata (name, slug, category, tagline)
-2. All questions/inputs the tool will ask
-3. Scoring logic for each input
-4. Verdict calculation rules
-5. UI sections and flow
+2. All questions/inputs with ghost text examples
+3. Scoring logic for each input (weights, thresholds)
+4. Verdict calculation rules (when GO vs NO-GO)
+5. UI sections and wizard flow (step 1, step 2, etc.)
 6. Commitment capture mechanism
+7. Export/share functionality
 
-The specification must be detailed enough for the Template Decider to build the HTML.
+The spec must be detailed enough to build the HTML directly.
 ```
 
 **User Message**:
