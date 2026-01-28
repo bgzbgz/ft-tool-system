@@ -22,10 +22,12 @@ import healthRouter from './routes/health';
 import factoryRouter from './routes/factory';
 import jobsRouter from './routes/jobs';
 import authRouter from './routes/auth';
+import toolResponsesRouter from './routes/toolResponses';
 import configGuard from './middleware/configGuard';
 import { seedExampleJobs } from './services/jobStore';
 import { isLearnWorldsConfigured } from './services/learnworlds';
 import { isGitHubConfigured } from './services/github';
+import { connectToMongo, closeMongo } from './services/toolDatabase';
 
 // ========== STARTUP VALIDATION ==========
 
@@ -97,6 +99,9 @@ app.use('/api/boss/jobs', jobsRouter);
 // Factory routes - protected by configGuard for core operations
 app.use('/api/factory', factoryRouter);
 
+// Tool responses - MongoDB storage with LearnWorlds auth
+app.use('/api/tools', toolResponsesRouter);
+
 // Root endpoint - always available
 app.get('/', (req, res) => {
   res.json({
@@ -118,15 +123,28 @@ app.get('/', (req, res) => {
  * - Server MUST still start even in CONFIG_ERROR state
  * - Health endpoint MUST be available
  */
-function startServer(): void {
+async function startServer(): Promise<void> {
   // Step 1: Validate configuration BEFORE accepting requests
   performStartupValidation();
 
   // Step 2: Seed example jobs for demo purposes
   seedExampleJobs();
 
-  // Step 3: Start HTTP server (even in CONFIG_ERROR state)
-  app.listen(PORT, () => {
+  // Step 3: Connect to MongoDB if URI is configured
+  if (process.env.MONGODB_URI) {
+    try {
+      await connectToMongo();
+      console.log('[Startup] MongoDB connected for tool responses');
+    } catch (error) {
+      console.warn('[Startup] MongoDB connection failed:', (error as Error).message);
+      console.warn('[Startup] Tool response storage will not be available');
+    }
+  } else {
+    console.log('[Startup] MONGODB_URI not configured - tool response storage disabled');
+  }
+
+  // Step 4: Start HTTP server (even in CONFIG_ERROR state)
+  const server = app.listen(PORT, () => {
     console.log(`[Startup] Server running on port ${PORT}`);
 
     if (!isConfigurationValid()) {
@@ -136,6 +154,19 @@ function startServer(): void {
       console.log('[Startup] All systems operational');
     }
   });
+
+  // Graceful shutdown handler
+  const shutdown = async () => {
+    console.log('[Shutdown] Graceful shutdown initiated...');
+    await closeMongo();
+    server.close(() => {
+      console.log('[Shutdown] Server closed');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 // Start the server
